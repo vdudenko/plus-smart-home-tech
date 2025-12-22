@@ -1,7 +1,7 @@
 package ru.yandex.practicum.collector.converter;
 
 import ru.yandex.practicum.kafka.telemetry.event.*;
-import smart_home.collector.v1.*;
+import telemetry.service.collector.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,8 +47,9 @@ public class HubEventConverter {
         return builder.build();
     }
 
-    private static DeviceTypeAvro toAvroDeviceState(smart_home.collector.v1.DeviceType type) {
+    private static DeviceTypeAvro toAvroDeviceState(DeviceType type) {
         return switch (type) {
+            case DEVICE_TYPE_UNSPECIFIED -> DeviceTypeAvro.MOTION_SENSOR;
             case MOTION_SENSOR -> DeviceTypeAvro.MOTION_SENSOR;
             case TEMPERATURE_SENSOR -> DeviceTypeAvro.TEMPERATURE_SENSOR;
             case LIGHT_SENSOR -> DeviceTypeAvro.LIGHT_SENSOR;
@@ -58,8 +59,9 @@ public class HubEventConverter {
         };
     }
 
-    private static ConditionTypeAvro toAvroConditionType(smart_home.collector.v1.ConditionType type) {
+    private static ConditionTypeAvro toAvroConditionType(ConditionType type) {
         return switch (type) {
+            case CONDITION_TYPE_UNSPECIFIED -> ConditionTypeAvro.MOTION;
             case MOTION -> ConditionTypeAvro.MOTION;
             case LUMINOSITY -> ConditionTypeAvro.LUMINOSITY;
             case SWITCH -> ConditionTypeAvro.SWITCH;
@@ -70,8 +72,9 @@ public class HubEventConverter {
         };
     }
 
-    private static ConditionOperationAvro toAvroConditionOperation(smart_home.collector.v1.ConditionOperation op) {
+    private static ConditionOperationAvro toAvroConditionOperation(ConditionOperation op) {
         return switch (op) {
+            case CONDITION_OPERATION_UNSPECIFIED -> ConditionOperationAvro.EQUALS;
             case EQUALS -> ConditionOperationAvro.EQUALS;
             case GREATER_THAN -> ConditionOperationAvro.GREATER_THAN;
             case LOWER_THAN -> ConditionOperationAvro.LOWER_THAN;
@@ -79,8 +82,9 @@ public class HubEventConverter {
         };
     }
 
-    private static ActionTypeAvro toAvroActionType(smart_home.collector.v1.ActionType type) {
+    private static ActionTypeAvro toAvroActionType(ActionType type) {
         return switch (type) {
+            case ACTION_TYPE_UNSPECIFIED -> ActionTypeAvro.ACTIVATE;
             case ACTIVATE -> ActionTypeAvro.ACTIVATE;
             case DEACTIVATE -> ActionTypeAvro.DEACTIVATE;
             case INVERSE -> ActionTypeAvro.INVERSE;
@@ -90,10 +94,10 @@ public class HubEventConverter {
     }
 
     private static List<ScenarioConditionAvro> toAvroConditions(
-            List<smart_home.collector.v1.ScenarioCondition> conditions) {
+            List<ScenarioCondition> conditions) {
         if (conditions == null) return new ArrayList<>();
         List<ScenarioConditionAvro> result = new ArrayList<>();
-        for (smart_home.collector.v1.ScenarioCondition c : conditions) {
+        for (ScenarioCondition c : conditions) {
             ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()
                     .setSensorId(c.getSensorId())
                     .setType(toAvroConditionType(c.getType()))
@@ -111,10 +115,10 @@ public class HubEventConverter {
     }
 
     private static List<DeviceActionAvro> toAvroActions(
-            List<smart_home.collector.v1.DeviceAction> actions) {
+            List<DeviceAction> actions) {
         if (actions == null) return new ArrayList<>();
         List<DeviceActionAvro> result = new ArrayList<>();
-        for (smart_home.collector.v1.DeviceAction a : actions) {
+        for (DeviceAction a : actions) {
             DeviceActionAvro avro = DeviceActionAvro.newBuilder()
                     .setSensorId(a.getSensorId())
                     .setType(toAvroActionType(a.getType()))
@@ -125,7 +129,7 @@ public class HubEventConverter {
         return result;
     }
 
-    private static DeviceTypeAvro toAvroDeviceType(smart_home.collector.v1.DeviceType type) {
+    private static DeviceTypeAvro toAvroDeviceType(DeviceType type) {
         return toAvroDeviceState(type);
     }
 }

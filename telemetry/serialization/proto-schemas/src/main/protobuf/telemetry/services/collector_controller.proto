@@ -1,12 +1,14 @@
 syntax = "proto3";
 
-package smart_home.collector.v1;
+package telemetry.service.collector;
+
 option java_multiple_files = true;
+
 import "google/protobuf/empty.proto";
 import "telemetry/messages/hub_event.proto";
 import "telemetry/messages/sensor_event.proto";
 
-service CollectorService {
+service CollectorController {
   rpc CollectHubEvent(CollectHubEventRequest) returns (google.protobuf.Empty);
   rpc CollectSensorEvent(CollectSensorEventRequest) returns (google.protobuf.Empty);
 }

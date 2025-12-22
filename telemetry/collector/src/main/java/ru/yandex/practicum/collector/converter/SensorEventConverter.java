@@ -1,7 +1,7 @@
 package ru.yandex.practicum.collector.converter;
 
 import ru.yandex.practicum.kafka.telemetry.event.*;
-import smart_home.collector.v1.*;
+import telemetry.service.collector.*;
 
 public class SensorEventConverter {
 

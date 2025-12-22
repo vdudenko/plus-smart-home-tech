@@ -2,16 +2,16 @@ package ru.yandex.practicum.collector.grpc;
 
 import io.grpc.stub.StreamObserver;
 import com.google.protobuf.Empty;
-import smart_home.collector.v1.CollectHubEventRequest;
-import smart_home.collector.v1.CollectSensorEventRequest;
+import telemetry.service.collector.CollectHubEventRequest;
+import telemetry.service.collector.CollectSensorEventRequest;
 import lombok.RequiredArgsConstructor;
 import net.devh.boot.grpc.server.service.GrpcService;
 import ru.yandex.practicum.collector.service.CollectorService;
-import smart_home.collector.v1.CollectorServiceGrpc.CollectorServiceImplBase;
+import telemetry.service.collector.CollectorControllerGrpc.CollectorControllerImplBase;
 
 @GrpcService
 @RequiredArgsConstructor
-public class CollectorGrpcService extends CollectorServiceImplBase {
+public class CollectorGrpcService extends CollectorControllerImplBase {
 
     private final CollectorService collectorService;
 
