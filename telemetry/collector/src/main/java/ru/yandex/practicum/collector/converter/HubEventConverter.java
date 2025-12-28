@@ -30,14 +30,14 @@ public class HubEventConverter {
             builder.setPayload(payload);
         } else if (event instanceof ScenarioAddedEvent scenarioAdded) {
             ScenarioAddedEventAvro payload = ScenarioAddedEventAvro.newBuilder()
-                    .setName(scenarioAdded.getHubId())
+                    .setName(scenarioAdded.getName())
                     .setConditions(toAvroConditions(scenarioAdded.getConditions()))
                     .setActions(toAvroActions(scenarioAdded.getActions()))
                     .build();
             builder.setPayload(payload);
         } else if (event instanceof ScenarioRemovedEvent scenarioRemoved) {
             ScenarioRemovedEventAvro payload = ScenarioRemovedEventAvro.newBuilder()
-                    .setName(scenarioRemoved.getHubId())
+                    .setName(scenarioRemoved.getName())
                     .build();
             builder.setPayload(payload);
         } else {
@@ -46,8 +46,6 @@ public class HubEventConverter {
 
         return builder.build();
     }
-
-    // --- Вспомогательные методы ---
 
     private static DeviceTypeAvro toAvroDeviceType(DeviceType type) {
         return switch (type) {
@@ -96,13 +94,12 @@ public class HubEventConverter {
                     .setType(toAvroConditionType(c.getType()))
                     .setOperation(toAvroConditionOperation(c.getOperation()));
 
-            // Обработка value: может быть Integer или Boolean
             Object value = c.getValue();
             if (value instanceof Integer) {
                 builder.setValue((Integer) value);
             } else if (value instanceof Boolean) {
                 builder.setValue((Boolean) value);
-            } // иначе null — оставляем по умолчанию
+            }
 
             result.add(builder.build());
         }
