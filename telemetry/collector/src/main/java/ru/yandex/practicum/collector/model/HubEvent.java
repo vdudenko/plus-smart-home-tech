@@ -16,7 +16,7 @@ import static com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
 @Setter
 @JsonTypeInfo(use = Id.NAME, include = As.EXISTING_PROPERTY, property = "type")
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = DeviceAddedEvent.class, name = "DEVICE_ADDED_EVENT"),
+        @JsonSubTypes.Type(value = DeviceAddedEvent.class, name = "DEVICE_ADDED"),
         @JsonSubTypes.Type(value = DeviceRemovedEvent.class, name = "DEVICE_REMOVED_EVENT"),
         @JsonSubTypes.Type(value = ScenarioAddedEvent.class, name = "SCENARIO_ADDED_EVENT"),
         @JsonSubTypes.Type(value = ScenarioRemovedEvent.class, name = "SCENARIO_REMOVED_EVENT")
