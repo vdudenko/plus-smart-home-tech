@@ -30,7 +30,7 @@ public class AggregationStarter {
 
     private final SnapshotManager snapshotManager;
     private KafkaConsumer<String, SensorEventAvro> consumer;
-    private KafkaProducer<String, SensorsSnapshotAvro> producer;
+    private KafkaProducer<String, byte[]> producer;
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
@@ -51,7 +51,7 @@ public class AggregationStarter {
         Properties producerProps = new Properties();
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer");
-        producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "io.confluent.kafka.serializers.KafkaAvroSerializer");
+        producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
         producerProps.put("schema.registry.url", "http://localhost:8081");
         producer = new KafkaProducer<>(producerProps);
     }
@@ -88,12 +88,27 @@ public class AggregationStarter {
         snapshotManager.updateState(event)
                 .ifPresent(snapshot -> {
                     log.debug("Sending updated snapshot for hub: {}", snapshot.getHubId());
-                    producer.send(new ProducerRecord<>("telemetry.snapshots.v1", snapshot.getHubId(), snapshot));
+                    byte[] data = serializeAvro(snapshot);
+                    producer.send(new ProducerRecord<>("telemetry.snapshots.v1", snapshot.getHubId(), data));
                 });
     }
 
     @PreDestroy
     public void shutdown() {
         consumer.wakeup(); // прерывает poll()
+    }
+
+    private byte[] serializeAvro(org.apache.avro.specific.SpecificRecord avro) {
+        try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            org.apache.avro.io.DatumWriter<org.apache.avro.specific.SpecificRecord> writer =
+                    new org.apache.avro.specific.SpecificDatumWriter<>(avro.getSchema());
+            org.apache.avro.io.BinaryEncoder encoder =
+                    org.apache.avro.io.EncoderFactory.get().binaryEncoder(out, null);
+            writer.write(avro, encoder);
+            encoder.flush();
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize Avro", e);
+        }
     }
 }
