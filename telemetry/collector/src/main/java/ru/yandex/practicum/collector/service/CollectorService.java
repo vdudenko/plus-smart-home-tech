@@ -21,8 +21,8 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class CollectorService {
 
-    private final KafkaTemplate<String, byte[]> hubKafkaTemplate;    // ← byte[]
-    private final KafkaTemplate<String, byte[]> sensorKafkaTemplate; // ← byte[]
+    private final KafkaTemplate<String, byte[]> hubKafkaTemplate;
+    private final KafkaTemplate<String, byte[]> sensorKafkaTemplate;
 
     public void handleHubEvent(HubEvent event) {
         HubEventAvro avro = HubEventConverter.toAvro(event);
