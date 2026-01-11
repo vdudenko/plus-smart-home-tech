@@ -60,7 +60,7 @@ public class AggregationStarter {
 
         try {
             while (true) {
-                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofSeconds(1));
+                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(100));
                 for (ConsumerRecord<String, SensorEventAvro> record : records) {
                     handleEvent(record.value());
                 }
