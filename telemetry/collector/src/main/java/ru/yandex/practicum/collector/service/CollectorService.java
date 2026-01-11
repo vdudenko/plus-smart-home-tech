@@ -36,7 +36,7 @@ public class CollectorService {
     public void handleSensorEvent(SensorEventProto event) {
         SensorEventAvro avro = sensorEventConverter.toAvro(event);
         byte[] data = serializeAvro(avro);
-        sensorKafkaTemplate.send("telemetry.sensors.v1", avro.getId(), data);
+        sensorKafkaTemplate.send("telemetry.sensors.v1", avro.getHubId(), data);
     }
 
     private byte[] serializeAvro(SpecificRecord avro) {
