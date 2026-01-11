@@ -16,6 +16,7 @@ public class SnapshotManager {
         String hubId = event.getHubId();
         String sensorId = event.getId();
 
+        // Гарантируем, что работаем только с снапшотом текущего хаба
         SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(hubId,
                 id -> SensorsSnapshotAvro.newBuilder()
                         .setHubId(id)
@@ -23,11 +24,13 @@ public class SnapshotManager {
                         .setSensorsState(new HashMap<>())
                         .build());
 
+        // Обновляем timestamp снапшота ТОЛЬКО если событие новее
+        if (event.getTimestamp() > snapshot.getTimestamp()) {
+            snapshot.setTimestamp(event.getTimestamp());
+        }
+
         Map<String, SensorStateAvro> sensors = snapshot.getSensorsState();
         SensorStateAvro oldState = sensors.get(sensorId);
-
-        // ВСЕГДА обновляем timestamp снапшота
-        snapshot.setTimestamp(event.getTimestamp());
 
         boolean shouldUpdate = false;
 
@@ -36,9 +39,9 @@ public class SnapshotManager {
         } else if (event.getTimestamp() > oldState.getTimestamp()) {
             shouldUpdate = true; // новое событие по времени
         } else if (event.getTimestamp() == oldState.getTimestamp()) {
-            // Событие с тем же timestamp — проверяем данные
-            if (!event.getPayload().equals(oldState.getData())) {
-                shouldUpdate = true; // данные изменились
+            // Для Avro-объектов equals() может не работать — сравниваем через toString()
+            if (!event.getPayload().toString().equals(oldState.getData().toString())) {
+                shouldUpdate = true;
             }
         }
 
