@@ -4,7 +4,7 @@ protocol SensorsSnapshotProtocol {
   import idl "SensorEvent.avdl";
 
   record SensorStateAvro {
-    long timestamp;
+    timestamp_ms timestamp;
     union {
       ClimateSensorAvro,
       LightSensorAvro,
@@ -16,7 +16,7 @@ protocol SensorsSnapshotProtocol {
 
   record SensorsSnapshotAvro {
     string hubId;
-    long timestamp;
+    timestamp_ms timestamp;
     map<SensorStateAvro> sensorsState;
   }
 }
