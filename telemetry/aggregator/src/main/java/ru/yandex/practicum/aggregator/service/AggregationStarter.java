@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
+import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
+
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -85,8 +87,9 @@ public class AggregationStarter {
     private void handleEvent(SensorEventAvro event) {
         snapshotManager.updateState(event)
                 .ifPresent(snapshot -> {
-                    log.debug("Sending updated snapshot for hub: {}", snapshot.getHubId());
-                    byte[] data = serializeAvro(snapshot);
+                    SensorsSnapshotAvro copy = SensorsSnapshotAvro.newBuilder(snapshot).build();
+                    log.debug("Sending updated snapshot for hub: {}", copy.getHubId());
+                    byte[] data = serializeAvro(copy);
                     producer.send(new ProducerRecord<>("telemetry.snapshots.v1", snapshot.getHubId(), data));
                 });
     }
