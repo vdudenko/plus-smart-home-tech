@@ -90,7 +90,7 @@ public class AggregationStarter {
                     SensorsSnapshotAvro copy = SensorsSnapshotAvro.newBuilder(snapshot).build();
                     log.debug("Sending updated snapshot for hub: {}", copy.getHubId());
                     byte[] data = serializeAvro(copy);
-                    producer.send(new ProducerRecord<>("telemetry.snapshots.v1", snapshot.getHubId(), data));
+                    producer.send(new ProducerRecord<>("telemetry.snapshots.v1", copy.getHubId(), data));
                 });
     }
 

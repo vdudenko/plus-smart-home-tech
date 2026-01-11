@@ -36,6 +36,6 @@ public class SnapshotManager {
                 .build();
         sensors.put(sensorId, newState);
 
-        return Optional.of(snapshot);
+        return Optional.of(SensorsSnapshotAvro.newBuilder(snapshot).build());
     }
 }
