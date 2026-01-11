@@ -26,23 +26,26 @@ public class SnapshotManager {
         Map<String, SensorStateAvro> sensors = snapshot.getSensorsState();
         SensorStateAvro oldState = sensors.get(sensorId);
 
-        if (oldState != null) {
-            if (oldState.getTimestamp() >= event.getTimestamp()) {
-                return Optional.empty(); // устаревшее событие
-            }
-            if (oldState.getData().equals(event.getPayload())) {
-                return Optional.empty(); // данные не изменились
+        boolean shouldUpdate = false;
+
+        if (oldState == null) {
+            shouldUpdate = true;
+        } else if (oldState.getTimestamp() < event.getTimestamp()) {
+            if (!oldState.getData().equals(event.getPayload())) {
+                shouldUpdate = true;
             }
         }
-
-        SensorStateAvro newState = SensorStateAvro.newBuilder()
-                .setTimestamp(event.getTimestamp())
-                .setData(event.getPayload())
-                .build();
-
-        sensors.put(sensorId, newState);
         snapshot.setTimestamp(event.getTimestamp());
 
-        return Optional.of(snapshot);
+        if (shouldUpdate) {
+            SensorStateAvro newState = SensorStateAvro.newBuilder()
+                    .setTimestamp(event.getTimestamp())
+                    .setData(event.getPayload())
+                    .build();
+            sensors.put(sensorId, newState);
+            return Optional.of(snapshot);
+        } else {
+            return Optional.of(snapshot);
+        }
     }
 }
