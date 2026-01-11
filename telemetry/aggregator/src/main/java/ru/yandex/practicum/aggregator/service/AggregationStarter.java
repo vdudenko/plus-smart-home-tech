@@ -18,7 +18,6 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
