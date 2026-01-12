@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/ewm-stats
-    username: dbuser
-    password: 12345
+    url: jdbc:postgresql://localhost:5432/smarthome
+    username: postgres
+    password: postgres
     driver-class-name: org.postgresql.Driver
   sql:
     init:
