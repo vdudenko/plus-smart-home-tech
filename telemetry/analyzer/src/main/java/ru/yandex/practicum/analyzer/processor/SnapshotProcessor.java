@@ -19,6 +19,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 
+/**
+ * Обработчик снапшотов состояния хабов.
+ * Читает сообщения из топика telemetry.snapshots.v1,
+ * оценивает сценарии и отправляет команды в Hub Router при выполнении условий.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
