@@ -95,7 +95,7 @@ public class AggregationStarter {
         eventBuffer.add(event);
         if (!processingScheduled) {
             processingScheduled = true;
-            CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS)
+            CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
                     .execute(this::processBufferedEvents);
         }
     }
