@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.yandex.practicum.analyzer.entity.Action;
 import ru.yandex.practicum.analyzer.entity.Condition;
 import ru.yandex.practicum.analyzer.entity.Scenario;
+import ru.yandex.practicum.analyzer.entity.ScenarioAction;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class ScenarioEvaluator {
         for (Scenario scenario : scenarios) {
             if (isScenarioFulfilled(scenario, snapshot)) {
                 actions.addAll(scenario.getActions().stream()
+                        .map(ScenarioAction::getAction)  // ← Получаем Action
                         .map(this::toAvroAction)
                         .toList());
             }
@@ -35,12 +37,13 @@ public class ScenarioEvaluator {
 
     private boolean isScenarioFulfilled(Scenario scenario, SensorsSnapshotAvro snapshot) {
         Map<String, SensorStateAvro> states = snapshot.getSensorsState();
-        scenario.getConditions().stream().allMatch(condition -> {
-            SensorStateAvro state = states.get(getSensorIdForCondition(condition));
+
+        return scenario.getConditions().stream().allMatch(scenarioCondition -> {
+            String sensorId = scenarioCondition.getSensorId();  // ← Берём из ScenarioCondition
+            SensorStateAvro state = states.get(sensorId);
             if (state == null) return false;
-            return checkCondition(condition, state);
+            return checkCondition(scenarioCondition.getCondition(), state);  // ← Передаём Condition
         });
-        return true;
     }
 
     private String getSensorIdForCondition(Condition condition) {
@@ -71,8 +74,21 @@ public class ScenarioEvaluator {
         };
     }
 
-    private DeviceActionAvro toAvroAction(
-            Action action) {
-        throw new UnsupportedOperationException("Implement action-to-sensor mapping");
+    private DeviceActionAvro toAvroAction(Action action) {
+        return DeviceActionAvro.newBuilder()
+                .setSensorId(action.getSensorId())  // ← Добавьте это поле в Action!
+                .setType(toAvroActionType(action.getType()))
+                .setValue(action.getValue())
+                .build();
+    }
+
+    private ActionTypeAvro toAvroActionType(String type) {
+        return switch (type) {
+            case "ACTIVATE" -> ActionTypeAvro.ACTIVATE;
+            case "DEACTIVATE" -> ActionTypeAvro.DEACTIVATE;
+            case "INVERSE" -> ActionTypeAvro.INVERSE;
+            case "SET_VALUE" -> ActionTypeAvro.SET_VALUE;
+            default -> throw new IllegalArgumentException("Unknown action type: " + type);
+        };
     }
 }
