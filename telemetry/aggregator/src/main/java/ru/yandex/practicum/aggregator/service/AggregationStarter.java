@@ -23,6 +23,10 @@ import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -35,6 +39,9 @@ public class AggregationStarter {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    private final Queue<SensorEventAvro> eventBuffer = new ConcurrentLinkedQueue<>();
+    private volatile boolean processingScheduled = false;
 
     @PostConstruct
     public void init() {
@@ -85,13 +92,28 @@ public class AggregationStarter {
     }
 
     private void handleEvent(SensorEventAvro event) {
-        snapshotManager.updateState(event)
-                .ifPresent(snapshot -> {
-                    SensorsSnapshotAvro copy = SensorsSnapshotAvro.newBuilder(snapshot).build();
-                    log.debug("Sending updated snapshot for hub: {}", copy.getHubId());
-                    byte[] data = serializeAvro(copy);
-                    producer.send(new ProducerRecord<>("telemetry.snapshots.v1", copy.getHubId(), data));
-                });
+        eventBuffer.add(event);
+        if (!processingScheduled) {
+            processingScheduled = true;
+            CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
+                    .execute(this::processBufferedEvents);
+        }
+    }
+
+    private void processBufferedEvents() {
+        try {
+            SensorEventAvro event;
+            while ((event = eventBuffer.poll()) != null) {
+                snapshotManager.updateState(event)
+                        .ifPresent(snapshot -> {
+                            byte[] data = serializeAvro(snapshot);
+                            producer.send(new ProducerRecord<>("telemetry.snapshots.v1",
+                                    snapshot.getHubId(), data));
+                        });
+            }
+        } finally {
+            processingScheduled = false;
+        }
     }
 
     @PreDestroy
