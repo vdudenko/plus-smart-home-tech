@@ -16,7 +16,6 @@ public class SnapshotManager {
         String hubId = event.getHubId();
         String sensorId = event.getId();
 
-        // Атомарное создание снапшота
         SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(hubId,
                 id -> SensorsSnapshotAvro.newBuilder()
                         .setHubId(id)
@@ -30,7 +29,7 @@ public class SnapshotManager {
         // Проверка на необходимость обновления
         if (oldState != null) {
             if (event.getTimestamp() < oldState.getTimestamp()) {
-                return Optional.empty(); // устаревшее событие
+                return Optional.empty(); // устаревшее
             }
             if (event.getTimestamp() == oldState.getTimestamp() &&
                     event.getPayload().equals(oldState.getData())) {
@@ -38,20 +37,16 @@ public class SnapshotManager {
             }
         }
 
-        // Создаём новое состояние датчика
+        // Создаём новое состояние
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(event.getTimestamp())
                 .setData(event.getPayload())
                 .build();
-
         sensors.put(sensorId, newState);
 
-        // Обновляем timestamp снапшота ТОЛЬКО если новое событие новее
-        if (event.getTimestamp() > snapshot.getTimestamp()) {
-            snapshot.setTimestamp(event.getTimestamp());
-        }
+        // ВСЕГДА обновляем timestamp снапшота до timestamp события
+        snapshot.setTimestamp(event.getTimestamp()); // ← УБРАТЬ УСЛОВИЕ!
 
-        // Возвращаем КОПИЮ
         return Optional.of(SensorsSnapshotAvro.newBuilder(snapshot).build());
     }
 }
