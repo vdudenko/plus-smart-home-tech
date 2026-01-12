@@ -3,10 +3,7 @@ package ru.yandex.practicum.analyzer.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import ru.yandex.practicum.analyzer.entity.Action;
-import ru.yandex.practicum.analyzer.entity.Condition;
-import ru.yandex.practicum.analyzer.entity.Scenario;
-import ru.yandex.practicum.analyzer.entity.ScenarioAction;
+import ru.yandex.practicum.analyzer.entity.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
 import java.util.ArrayList;
@@ -39,7 +36,7 @@ public class ScenarioEvaluator {
         log.debug("Evaluating scenario: '{}' for hub: {}", scenario.getName(), scenario.getHubId());
 
         Map<String, SensorStateAvro> states = snapshot.getSensorsState();
-        for (var scenarioCondition : scenario.getConditions()) {
+        for (ScenarioCondition scenarioCondition : scenario.getConditions()) { // ← for-each вместо stream
             String sensorId = scenarioCondition.getSensorId();
             SensorStateAvro state = states.get(sensorId);
 
@@ -48,13 +45,8 @@ public class ScenarioEvaluator {
                 return false;
             }
 
-            Condition condition = scenarioCondition.getCondition();
-            boolean conditionMet = checkCondition(condition, state);
-
-            log.debug("Condition check - sensor: {}, type: {}, operation: {}, expected: {}, result: {}",
-                    sensorId, condition.getType(), condition.getOperation(),
-                    condition.getValue(), conditionMet);
-
+            boolean conditionMet = checkCondition(scenarioCondition.getCondition(), state);
+            log.debug("Condition for sensor {}: {} = {}", sensorId, scenarioCondition.getCondition().getType(), conditionMet);
             if (!conditionMet) {
                 return false;
             }

@@ -12,6 +12,8 @@ import ru.yandex.practicum.grpc.telemetry.hubrouter.DeviceActionRequest;
 import ru.yandex.practicum.kafka.telemetry.event.DeviceActionAvro;
 import ru.yandex.practicum.kafka.telemetry.event.ActionTypeAvro;
 
+import java.util.concurrent.TimeUnit;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,18 +23,40 @@ public class HubRouterClient {
     private HubRouterControllerGrpc.HubRouterControllerBlockingStub stub;
 
     public void sendAction(String hubId, String scenarioName, DeviceActionAvro action, long timestamp) {
-        try {
-            var request = DeviceActionRequest.newBuilder()
-                    .setHubId(hubId)
-                    .setScenarioName(scenarioName)
-                    .setAction(toProto(action))
-                    .setTimestamp(toProtoTimestamp(timestamp))
-                    .build();
+        var request = DeviceActionRequest.newBuilder()
+                .setHubId(hubId)
+                .setScenarioName(scenarioName)
+                .setAction(toProto(action))
+                .setTimestamp(toProtoTimestamp(timestamp))
+                .build();
 
-            stub.handleDeviceAction(request);
-            log.debug("Action sent to hub {}: {}", hubId, action);
-        } catch (StatusRuntimeException e) {
-            log.error("Failed to send action to hub {}: {}", hubId, e.getMessage(), e);
+        int maxRetries = 3;
+        long delayMs = 500; // Уменьшите задержку
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                stub.withDeadlineAfter(3, TimeUnit.SECONDS).handleDeviceAction(request);
+                log.debug("Action sent to hub {}: {}", hubId, action);
+                return;
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode() == io.grpc.Status.Code.UNAVAILABLE && attempt < maxRetries) {
+                    // НЕ логируем как ошибку — это ожидаемое поведение при запуске
+                    log.debug("Hub Router unavailable (attempt {}/{}), retrying in {} ms",
+                            attempt, maxRetries, delayMs);
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    delayMs *= 2;
+                } else {
+                    // Только настоящие ошибки логируем как ERROR
+                    log.error("Failed to send action to hub {} after {} attempts: {}",
+                            hubId, maxRetries, e.getMessage());
+                    return;
+                }
+            }
         }
     }
 

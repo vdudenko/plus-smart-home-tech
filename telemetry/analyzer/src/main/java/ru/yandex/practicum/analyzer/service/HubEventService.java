@@ -143,7 +143,7 @@ public class HubEventService {
         }
     }
 
-    public List<Scenario> findScenariosByHubId(String hubId) {
-        return scenarioRepository.findByHubId(hubId);
+    public List<Scenario> findByHubIdWithConditionsAndActions(String hubId) {
+        return scenarioRepository.findByHubIdWithConditionsAndActions(hubId);
     }
 }

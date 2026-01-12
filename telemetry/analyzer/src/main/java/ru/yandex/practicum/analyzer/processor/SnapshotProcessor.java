@@ -112,7 +112,7 @@ public class SnapshotProcessor {
             String hubId = snapshot.getHubId();
             log.debug("Processing snapshot for hub: {}", hubId);
 
-            var scenarios = hubEventService.findScenariosByHubId(hubId);
+            var scenarios = hubEventService.findByHubIdWithConditionsAndActions(hubId);
             if (scenarios.isEmpty()) {
                 log.debug("No scenarios found for hub: {}", hubId);
                 return;
