@@ -36,14 +36,26 @@ public class ScenarioEvaluator {
     }
 
     private boolean isScenarioFulfilled(Scenario scenario, SensorsSnapshotAvro snapshot) {
-        Map<String, SensorStateAvro> states = snapshot.getSensorsState();
+        log.debug("Evaluating scenario: {} for hub: {}", scenario.getName(), scenario.getHubId());
 
-        return scenario.getConditions().stream().allMatch(scenarioCondition -> {
-            String sensorId = scenarioCondition.getSensorId();  // ← Берём из ScenarioCondition
+        Map<String, SensorStateAvro> states = snapshot.getSensorsState();
+        boolean result = scenario.getConditions().stream().allMatch(scenarioCondition -> {
+            String sensorId = scenarioCondition.getSensorId();
             SensorStateAvro state = states.get(sensorId);
-            if (state == null) return false;
-            return checkCondition(scenarioCondition.getCondition(), state);  // ← Передаём Condition
+
+            if (state == null) {
+                log.debug("Sensor {} not found in snapshot", sensorId);
+                return false;
+            }
+
+            boolean conditionMet = checkCondition(scenarioCondition.getCondition(), state);
+            log.debug("Condition for sensor {}: {} = {}",
+                    sensorId, scenarioCondition.getCondition().getType(), conditionMet);
+            return conditionMet;
         });
+
+        log.debug("Scenario '{}' result: {}", scenario.getName(), result);
+        return result;
     }
 
     private String getSensorIdForCondition(Condition condition) {
@@ -70,7 +82,10 @@ public class ScenarioEvaluator {
             case "TEMPERATURE" -> ((ClimateSensorAvro) data).getTemperatureC();
             case "HUMIDITY" -> ((ClimateSensorAvro) data).getHumidity();
             case "CO2LEVEL" -> ((ClimateSensorAvro) data).getCo2Level();
-            default -> 0;
+            default -> {
+                log.warn("Unknown sensor type: {}", type);
+                yield 0;
+            }
         };
     }
 
