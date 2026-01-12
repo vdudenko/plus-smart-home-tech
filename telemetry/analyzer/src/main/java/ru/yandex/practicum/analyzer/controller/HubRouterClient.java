@@ -30,8 +30,8 @@ public class HubRouterClient {
                 .setTimestamp(toProtoTimestamp(timestamp))
                 .build();
 
-        int maxRetries = 3;
-        long delayMs = 500; // Уменьшите задержку
+        int maxRetries = 10;
+        long delayMs = 200;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -49,7 +49,6 @@ public class HubRouterClient {
                         Thread.currentThread().interrupt();
                         return;
                     }
-                    delayMs *= 2;
                 } else {
                     // Только настоящие ошибки логируем как ERROR
                     log.error("Failed to send action to hub {} after {} attempts: {}",

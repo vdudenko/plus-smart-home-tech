@@ -67,11 +67,19 @@ public class ScenarioEvaluator {
 
     private int extractValue(Object data, String type) {
         return switch (type) {
-            case "MOTION", "SWITCH" -> {
+            case "SWITCH" -> {
                 if (data instanceof SwitchSensorAvro switchData) {
                     yield switchData.getState() ? 1 : 0;
                 } else {
                     log.warn("Expected SwitchSensorAvro for type {}, got: {}", type, data.getClass());
+                    yield 0;
+                }
+            }
+            case "MOTION" -> {
+                if (data instanceof MotionSensorAvro motionData) {
+                    yield motionData.getMotion() ? 1 : 0;
+                } else {
+                    log.warn("Expected MotionSensorAvro for type {}, got: {}", type, data.getClass());
                     yield 0;
                 }
             }
