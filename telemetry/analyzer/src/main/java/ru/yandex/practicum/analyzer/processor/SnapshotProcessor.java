@@ -12,7 +12,6 @@ import ru.yandex.practicum.analyzer.deserializer.HubEventAvroDeserializer;
 import ru.yandex.practicum.analyzer.deserializer.SensorsSnapshotAvroDeserializer;
 import ru.yandex.practicum.analyzer.service.HubEventService;
 import ru.yandex.practicum.analyzer.service.ScenarioEvaluator;
-import ru.yandex.practicum.kafka.telemetry.event.DeviceActionAvro;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
@@ -118,20 +117,25 @@ public class SnapshotProcessor {
                 return;
             }
 
-            // Оцениваем сценарии и получаем действия
-            List<DeviceActionAvro> actions = scenarioEvaluator.evaluate(snapshot, scenarios);
-            if (actions.isEmpty()) {
+            List<ScenarioEvaluator.ActionWithScenario> actionsWithScenarios =
+                    scenarioEvaluator.evaluateWithScenarioNames(snapshot, scenarios);
+
+            if (actionsWithScenarios.isEmpty()) {
                 log.debug("No conditions met for hub: {}", hubId);
                 return;
             }
 
-            // Отправляем команды в Hub Router
             long timestamp = System.currentTimeMillis();
-            for (DeviceActionAvro action : actions) {
-                hubRouterClient.sendAction(hubId, "triggered-scenario", action, timestamp);
+            for (var actionWithScenario : actionsWithScenarios) {
+                hubRouterClient.sendAction(
+                        hubId,
+                        actionWithScenario.getScenarioName(),
+                        actionWithScenario.getAction(),
+                        timestamp
+                );
             }
 
-            log.info("Executed {} actions for hub: {}", actions.size(), hubId);
+            log.info("Executed {} actions for hub: {}", actionsWithScenarios.size(), hubId);
         } catch (Exception e) {
             log.error("Failed to process snapshot for hub: {}", snapshot.getHubId(), e);
         }

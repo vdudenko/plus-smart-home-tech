@@ -1,5 +1,6 @@
 package ru.yandex.practicum.analyzer.service;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,10 +16,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ScenarioEvaluator {
 
-    public List<DeviceActionAvro> evaluate(
-            SensorsSnapshotAvro snapshot,
-            List<Scenario> scenarios) {
-
+    public List<DeviceActionAvro> evaluate(SensorsSnapshotAvro snapshot, List<Scenario> scenarios) {
         List<DeviceActionAvro> actions = new ArrayList<>();
 
         for (Scenario scenario : scenarios) {
@@ -121,5 +119,34 @@ public class ScenarioEvaluator {
             case "SET_VALUE" -> ActionTypeAvro.SET_VALUE;
             default -> throw new IllegalArgumentException("Unknown action type: " + type);
         };
+    }
+
+    @Getter
+    public static class ActionWithScenario {
+        private final DeviceActionAvro action;
+        private final String scenarioName;
+
+        public ActionWithScenario(DeviceActionAvro action, String scenarioName) {
+            this.action = action;
+            this.scenarioName = scenarioName;
+        }
+
+    }
+
+    public List<ActionWithScenario> evaluateWithScenarioNames(
+            SensorsSnapshotAvro snapshot,
+            List<Scenario> scenarios) {
+
+        List<ActionWithScenario> actions = new ArrayList<>();
+
+        for (Scenario scenario : scenarios) {
+            if (isScenarioFulfilled(scenario, snapshot)) {
+                for (var scenarioAction : scenario.getActions()) {
+                    DeviceActionAvro avroAction = toAvroAction(scenarioAction.getAction());
+                    actions.add(new ActionWithScenario(avroAction, scenario.getName()));
+                }
+            }
+        }
+        return actions;
     }
 }
