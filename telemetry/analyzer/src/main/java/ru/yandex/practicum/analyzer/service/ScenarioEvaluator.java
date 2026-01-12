@@ -27,7 +27,7 @@ public class ScenarioEvaluator {
         for (Scenario scenario : scenarios) {
             if (isScenarioFulfilled(scenario, snapshot)) {
                 actions.addAll(scenario.getActions().stream()
-                        .map(ScenarioAction::getAction)  // ← Получаем Action
+                        .map(ScenarioAction::getAction)
                         .map(this::toAvroAction)
                         .toList());
             }
@@ -36,10 +36,10 @@ public class ScenarioEvaluator {
     }
 
     private boolean isScenarioFulfilled(Scenario scenario, SensorsSnapshotAvro snapshot) {
-        log.debug("Evaluating scenario: {} for hub: {}", scenario.getName(), scenario.getHubId());
+        log.debug("Evaluating scenario: '{}' for hub: {}", scenario.getName(), scenario.getHubId());
 
         Map<String, SensorStateAvro> states = snapshot.getSensorsState();
-        boolean result = scenario.getConditions().stream().allMatch(scenarioCondition -> {
+        for (var scenarioCondition : scenario.getConditions()) {
             String sensorId = scenarioCondition.getSensorId();
             SensorStateAvro state = states.get(sensorId);
 
@@ -48,18 +48,18 @@ public class ScenarioEvaluator {
                 return false;
             }
 
-            boolean conditionMet = checkCondition(scenarioCondition.getCondition(), state);
-            log.debug("Condition for sensor {}: {} = {}",
-                    sensorId, scenarioCondition.getCondition().getType(), conditionMet);
-            return conditionMet;
-        });
+            Condition condition = scenarioCondition.getCondition();
+            boolean conditionMet = checkCondition(condition, state);
 
-        log.debug("Scenario '{}' result: {}", scenario.getName(), result);
-        return result;
-    }
+            log.debug("Condition check - sensor: {}, type: {}, operation: {}, expected: {}, result: {}",
+                    sensorId, condition.getType(), condition.getOperation(),
+                    condition.getValue(), conditionMet);
 
-    private String getSensorIdForCondition(Condition condition) {
-        throw new UnsupportedOperationException("Implement condition-to-sensor mapping");
+            if (!conditionMet) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean checkCondition(Condition condition, SensorStateAvro state) {
@@ -77,11 +77,35 @@ public class ScenarioEvaluator {
 
     private int extractValue(Object data, String type) {
         return switch (type) {
-            case "MOTION", "SWITCH" -> ((SwitchSensorAvro) data).getState() ? 1 : 0;
-            case "LUMINOSITY" -> ((LightSensorAvro) data).getLuminosity();
-            case "TEMPERATURE" -> ((ClimateSensorAvro) data).getTemperatureC();
-            case "HUMIDITY" -> ((ClimateSensorAvro) data).getHumidity();
-            case "CO2LEVEL" -> ((ClimateSensorAvro) data).getCo2Level();
+            case "MOTION", "SWITCH" -> {
+                if (data instanceof SwitchSensorAvro switchData) {
+                    yield switchData.getState() ? 1 : 0;
+                } else {
+                    log.warn("Expected SwitchSensorAvro for type {}, got: {}", type, data.getClass());
+                    yield 0;
+                }
+            }
+            case "LUMINOSITY" -> {
+                if (data instanceof LightSensorAvro lightData) {
+                    yield lightData.getLuminosity();
+                } else {
+                    log.warn("Expected LightSensorAvro for type {}, got: {}", type, data.getClass());
+                    yield 0;
+                }
+            }
+            case "TEMPERATURE", "HUMIDITY", "CO2LEVEL" -> {
+                if (data instanceof ClimateSensorAvro climateData) {
+                    yield switch (type) {
+                        case "TEMPERATURE" -> climateData.getTemperatureC();
+                        case "HUMIDITY" -> climateData.getHumidity();
+                        case "CO2LEVEL" -> climateData.getCo2Level();
+                        default -> 0;
+                    };
+                } else {
+                    log.warn("Expected ClimateSensorAvro for type {}, got: {}", type, data.getClass());
+                    yield 0;
+                }
+            }
             default -> {
                 log.warn("Unknown sensor type: {}", type);
                 yield 0;
@@ -91,7 +115,7 @@ public class ScenarioEvaluator {
 
     private DeviceActionAvro toAvroAction(Action action) {
         return DeviceActionAvro.newBuilder()
-                .setSensorId(action.getSensorId())  // ← Добавьте это поле в Action!
+                .setSensorId(action.getSensorId())
                 .setType(toAvroActionType(action.getType()))
                 .setValue(action.getValue())
                 .build();
