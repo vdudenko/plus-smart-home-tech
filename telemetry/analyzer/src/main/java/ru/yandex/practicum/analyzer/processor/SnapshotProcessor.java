@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
@@ -34,6 +35,9 @@ public class SnapshotProcessor {
 
     private KafkaConsumer<String, HubEventAvro> hubConsumer;
     private KafkaConsumer<String, SensorsSnapshotAvro> snapshotConsumer;
+
+    private final ConcurrentHashMap<String, Long> lastProcessedTime = new ConcurrentHashMap<>();
+    private static final long MIN_INTERVAL_MS = 100;
 
     public void start() {
         // Инициализация потребителя для событий хаба
@@ -109,17 +113,27 @@ public class SnapshotProcessor {
     private void processSnapshot(SensorsSnapshotAvro snapshot) {
         try {
             String hubId = snapshot.getHubId();
+            long currentTime = System.currentTimeMillis();
+
+            // Игнорируем слишком частые снапшоты одного хаба
+            Long lastTime = lastProcessedTime.get(hubId);
+            if (lastTime != null && (currentTime - lastTime) < MIN_INTERVAL_MS) {
+                log.debug("Skipping frequent snapshot for hub: {}", hubId);
+                return;
+            }
+            lastProcessedTime.put(hubId, currentTime);
+
             log.debug("Processing snapshot for hub: {}", hubId);
 
+            // Загружаем сценарии с ЖАДНОЙ загрузкой связанных коллекций
             var scenarios = hubEventService.findByHubIdWithConditionsAndActions(hubId);
             if (scenarios.isEmpty()) {
                 log.debug("No scenarios found for hub: {}", hubId);
                 return;
             }
 
-            List<ScenarioEvaluator.ActionWithScenario> actionsWithScenarios =
-                    scenarioEvaluator.evaluateWithScenarioNames(snapshot, scenarios);
-
+            // Оцениваем сценарии и получаем действия с ИМЕНАМИ сценариев
+            var actionsWithScenarios = scenarioEvaluator.evaluateWithScenarioNames(snapshot, scenarios);
             if (actionsWithScenarios.isEmpty()) {
                 log.debug("No conditions met for hub: {}", hubId);
                 return;
@@ -127,6 +141,7 @@ public class SnapshotProcessor {
 
             long timestamp = System.currentTimeMillis();
             for (var actionWithScenario : actionsWithScenarios) {
+                // Отправляем с РЕАЛЬНЫМ именем сценария
                 hubRouterClient.sendAction(
                         hubId,
                         actionWithScenario.getScenarioName(),
