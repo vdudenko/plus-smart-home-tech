@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ewm-stats
+    username: dbuser
+    password: 12345
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect  # ← ЭТО ОБЯЗАТЕЛЬНО
+    hibernate:
+      ddl-auto: update
+      dialect: org.hibernate.dialect.PostgreSQLDialect
+      show_sql: true
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: analyzer-snapshots
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+grpc:
+  client:
+    hub-router:
+      address: 'static://localhost:59090'
+      enable-keep-alive: true
+      keep-alive-without-calls: true
+      negotiation-type: plaintext
