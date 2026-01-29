@@ -1,9 +1,11 @@
 spring:
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer
-      group-id: aggregator-group
-      auto-offset-reset: earliest
-      enable-auto-commit: false
+  application:
+    name: aggregator
+  config:
+    import: configserver:http://localhost:8888
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        useRandomPolicy: true
+        max-interval: 6000
