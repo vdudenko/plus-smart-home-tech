@@ -5,10 +5,15 @@ spring:
     import: configserver:http://localhost:8888
   cloud:
     config:
-      fail-fast: true
+      fail-fast: false
       retry:
-        useRandomPolicy: true
-        max-interval: 6000
+        initial-interval: 1000
+        max-attempts: 3
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 grpc:
   server:
     port: 59091
@@ -16,3 +21,5 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://${eureka.instance.hostname:localhost}:${eureka.instance.port:8761}/eureka/
+
+spring.main.lazy-initialization: true
