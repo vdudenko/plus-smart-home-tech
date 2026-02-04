@@ -4,4 +4,5 @@ import org.springframework.cloud.openfeign.FeignClient;
 import ru.yandex.practicum.commerce.api.WarehouseApi;
 
 @FeignClient(name = "warehouse")
-public interface WarehouseClient extends WarehouseApi {}
+public interface WarehouseClient extends WarehouseApi {
+}

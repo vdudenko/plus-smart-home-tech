@@ -4,15 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.commerce.dto.WarehouseAddress;
+import ru.yandex.practicum.commerce.dto.*;
 import ru.yandex.practicum.warehouse.mapper.WarehouseProductMapper;
 import ru.yandex.practicum.warehouse.model.WarehouseProduct;
 import ru.yandex.practicum.warehouse.repository.WarehouseProductRepository;
 
-import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -27,73 +26,61 @@ public class WarehouseService {
     }
 
     @Transactional
-    public void addProductToWarehouse(Long productId, Integer quantity,
-                                      Double width, Double height, Double depth,
-                                      Double weight, Boolean fragile) {
-        if (warehouseProductRepository.existsByProductId(productId)) {
-            log.warn("Product with id {} already exists in warehouse", productId);
-            throw new RuntimeException("Product already exists in warehouse: " + productId);
+    public void newProductInWarehouse(NewProductInWarehouseRequest request) {
+        if (warehouseProductRepository.existsByProductId(request.getProductId())) {
+            log.warn("Product with id {} already exists in warehouse", request.getProductId());
+            throw new RuntimeException("Product already exists in warehouse: " + request.getProductId());
         }
 
-        WarehouseProduct product = WarehouseProduct.builder()
-                .productId(productId)
-                .quantity(quantity)
-                .width(BigDecimal.valueOf(width))
-                .height(BigDecimal.valueOf(height))
-                .depth(BigDecimal.valueOf(depth))
-                .weight(BigDecimal.valueOf(weight))
-                .fragile(fragile)
-                .build();
-
+        WarehouseProduct product = warehouseProductMapper.toEntity(request);
         warehouseProductRepository.save(product);
-        log.info("Product {} added to warehouse with quantity {}", productId, quantity);
+        log.info("Product {} added to warehouse", request.getProductId());
     }
 
     @Transactional
-    public void increaseProductQuantity(Long productId, Integer quantity) {
-        WarehouseProduct product = warehouseProductRepository.findByProductId(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found in warehouse: " + productId));
+    public void addProductToWarehouse(AddProductToWarehouseRequest request) {
+        WarehouseProduct product = warehouseProductRepository.findByProductId(request.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found in warehouse: " + request.getProductId()));
 
-        product.setQuantity(product.getQuantity() + quantity);
+        product.setQuantity(product.getQuantity() + request.getQuantity());
         warehouseProductRepository.save(product);
         log.info("Increased quantity for product {} by {}. New quantity: {}",
-                productId, quantity, product.getQuantity());
+                request.getProductId(), request.getQuantity(), product.getQuantity());
     }
 
     @Transactional(readOnly = true)
-    public Map<Long, Integer> checkProductsAvailability(List<Long> productIds) {
-        List<WarehouseProduct> products = warehouseProductRepository.findByProductIdIn(productIds);
+    public BookedProductsDto checkProductQuantityEnoughForShoppingCart(ShoppingCartDto shoppingCartDto) {
+        Map<UUID, Long> products = shoppingCartDto.getProducts();
+        List<WarehouseProduct> warehouseProducts = warehouseProductRepository.findByProductIdIn(List.copyOf(products.keySet()));
 
-        Map<Long, Integer> availabilityMap = new HashMap<>();
-        for (Long productId : productIds) {
-            availabilityMap.put(productId, 0);
-        }
-
-        for (WarehouseProduct product : products) {
-            availabilityMap.put(product.getProductId(), product.getQuantity());
-        }
-
-        return availabilityMap;
-    }
-
-    @Transactional
-    public void reserveProducts(Map<Long, Integer> productQuantities) {
-        for (Map.Entry<Long, Integer> entry : productQuantities.entrySet()) {
-            Long productId = entry.getKey();
-            Integer requestedQuantity = entry.getValue();
-
-            WarehouseProduct product = warehouseProductRepository.findByProductId(productId)
-                    .orElseThrow(() -> new RuntimeException("Product not found in warehouse: " + productId));
-
-            if (product.getQuantity() < requestedQuantity) {
+        // Проверяем достаточность количества
+        for (WarehouseProduct wp : warehouseProducts) {
+            Long requestedQuantity = products.get(wp.getProductId());
+            if (wp.getQuantity() < requestedQuantity) {
                 throw new RuntimeException(String.format(
-                        "Insufficient quantity for product %d. Available: %d, Requested: %d",
-                        productId, product.getQuantity(), requestedQuantity));
+                        "Insufficient quantity for product %s. Available: %d, Requested: %d",
+                        wp.getProductId(), wp.getQuantity(), requestedQuantity));
             }
-
-            product.setQuantity(product.getQuantity() - requestedQuantity);
-            warehouseProductRepository.save(product);
-            log.info("Reserved {} units of product {}", requestedQuantity, productId);
         }
+
+        // Рассчитываем общие параметры доставки
+        double totalWeight = 0.0;
+        double totalVolume = 0.0;
+        boolean hasFragile = false;
+
+        for (WarehouseProduct wp : warehouseProducts) {
+            Long requestedQuantity = products.get(wp.getProductId());
+            totalWeight += wp.getWeight() * requestedQuantity;
+            totalVolume += wp.getWidth() * wp.getHeight() * wp.getDepth() * requestedQuantity;
+            if (wp.getFragile()) {
+                hasFragile = true;
+            }
+        }
+
+        return BookedProductsDto.builder()
+                .deliveryWeight(totalWeight)
+                .deliveryVolume(totalVolume)
+                .fragile(hasFragile)
+                .build();
     }
 }

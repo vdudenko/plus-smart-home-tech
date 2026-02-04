@@ -1,13 +1,15 @@
 package ru.yandex.practicum.warehouse.model;
 
-import jakarta.persistence.Entity;
 import jakarta.persistence.*;
-import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.math.BigDecimal;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "warehouse_products")
@@ -21,23 +23,31 @@ public class WarehouseProduct {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private Long productId;
+    private UUID productId;
 
     @Column(nullable = false)
-    private Integer quantity;
+    private Long quantity;
 
     @Column(nullable = false)
-    private BigDecimal width;
+    private Double width;
 
     @Column(nullable = false)
-    private BigDecimal height;
+    private Double height;
 
     @Column(nullable = false)
-    private BigDecimal depth;
+    private Double depth;
 
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal weight;
+    @Column(nullable = false)
+    private Double weight;
 
     @Column(nullable = false)
     private Boolean fragile;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 }

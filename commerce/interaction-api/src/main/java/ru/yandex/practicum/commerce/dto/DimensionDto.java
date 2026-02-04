@@ -5,14 +5,19 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import jakarta.validation.constraints.Min;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WarehouseAddress {
-    private String country;
-    private String city;
-    private String street;
-    private String house;
-    private String flat;
+public class DimensionDto {
+    @Min(1)
+    private Double width;
+
+    @Min(1)
+    private Double height;
+
+    @Min(1)
+    private Double depth;
 }
