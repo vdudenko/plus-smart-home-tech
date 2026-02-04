@@ -66,36 +66,29 @@ public class AggregationStarter {
         } catch (WakeupException e) {
             log.info("Consumer woken up for shutdown");
         } catch (Exception e) {
-            log.error("Fatal error in aggregator", e);
+            log.error("❌ Fatal error in aggregator", e);
         } finally {
             shutdownResources();
         }
     }
 
     private void processSensorEvent(SensorEventAvro event) {
-        // ПОЛУЧАЕМ ДАННЫЕ ИЗ СОБЫТИЯ (с учётом структуры .avdl)
-        String hubId = event.getHubId().toString();  // CharSequence → String
-        String deviceId = event.getId().toString();  // ← getHubId() и getId() существуют!
+        String hubId = event.getHubId();
+        String deviceId = event.getId();
 
         log.debug("📥 Processing event: hubId={}, deviceId={}", hubId, deviceId);
 
-        // Получаем или создаём снапшот для хаба
         Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
-
-        // Получаем или создаём состояние для устройства
         Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
-
-        // Сохраняем предыдущее состояние для сравнения
         Map<String, String> previousState = new HashMap<>(deviceState);
 
-        // ОБРАБАТЫВАЕМ payload в зависимости от типа сенсора (через проверку типа)
+        // 🔑 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: обработка union-типа через проверку типа объекта
         Object payload = event.getPayload();
 
         if (payload instanceof ClimateSensorAvro) {
             ClimateSensorAvro climate = (ClimateSensorAvro) payload;
             deviceState.put("temperature", String.valueOf(climate.getTemperatureC()));
             deviceState.put("humidity", String.valueOf(climate.getHumidity()));
-            // co2_level опционален для сценариев
         }
         else if (payload instanceof LightSensorAvro) {
             LightSensorAvro light = (LightSensorAvro) payload;
@@ -114,48 +107,35 @@ public class AggregationStarter {
             deviceState.put("temperature", String.valueOf(temp.getTemperatureC()));
         }
         else {
-            log.warn("Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
+            log.warn("⚠️ Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
             return;
         }
 
-        // Проверяем, изменилось ли состояние (публикуем ТОЛЬКО при изменении!)
         if (previousState.equals(deviceState)) {
-            log.debug("State for device {}@{} not changed, skipping publication", deviceId, hubId);
+            log.debug("⏭️ State unchanged for device {}@{}, skipping publication", deviceId, hubId);
             return;
         }
 
-        // Сериализуем снапшот в JSON
-        byte[] snapshotBytes;
         try {
-            snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
+            byte[] snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
+            ProducerRecord<String, byte[]> record = new ProducerRecord<>("telemetry.snapshots.v1", hubId, snapshotBytes);
+
+            producer.send(record, (metadata, exception) -> {
+                if (exception == null) {
+                    log.info("✅ Published snapshot for hub {} (offset={})", hubId, metadata.offset());
+                } else {
+                    log.error("❌ Failed to publish snapshot for hub {}", hubId, exception);
+                }
+            });
+            producer.flush(); // Гарантия отправки для тестов
         } catch (JsonProcessingException e) {
-            log.error("Failed to serialize snapshot for hub {}", hubId, e);
-            return;
+            log.error("❌ Serialization error for hub {}", hubId, e);
         }
-
-        // Публикуем снапшот в топик
-        ProducerRecord<String, byte[]> record = new ProducerRecord<>(
-                "telemetry.snapshots.v1",  // ← КРИТИЧЕСКИ ВАЖНО: именно этот топик!
-                hubId,
-                snapshotBytes
-        );
-
-        producer.send(record, (metadata, exception) -> {
-            if (exception == null) {
-                log.info("Published snapshot for hub {} (partition={}, offset={})",
-                        hubId, metadata.partition(), metadata.offset());
-            } else {
-                log.error("Failed to publish snapshot for hub {}", hubId, exception);
-            }
-        });
-
-        // Сбрасываем буфер для гарантии доставки (для тестов)
-        producer.flush();
     }
 
     @PreDestroy
     public void shutdown() {
-        log.info("Shutting down aggregator...");
+        log.info("🛑 Shutting down aggregator...");
         consumer.wakeup();
     }
 
@@ -164,11 +144,11 @@ public class AggregationStarter {
             producer.flush();
             consumer.commitSync();
         } catch (Exception e) {
-            log.warn("Error during shutdown", e);
+            log.warn("⚠️ Error during shutdown", e);
         } finally {
             consumer.close();
             producer.close();
-            log.info("Aggregator stopped");
+            log.info("✅ Aggregator stopped");
         }
     }
 }
