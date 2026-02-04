@@ -1,15 +1,14 @@
 package ru.yandex.practicum.warehouse.controller;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.commerce.api.WarehouseApi;
+import ru.yandex.practicum.commerce.api.WarehouseApi; // ← ИМПЛЕМЕНТИРУЕМ КОНТРАКТ СКЛАДА
 import ru.yandex.practicum.commerce.dto.*;
 import ru.yandex.practicum.warehouse.service.WarehouseService;
 
 @RestController
 @RequiredArgsConstructor
-public class WarehouseController implements WarehouseApi {
+public class WarehouseController implements WarehouseApi { // ← Реализация контракта склада
 
     private final WarehouseService warehouseService;
 
