@@ -2,7 +2,6 @@ package ru.yandex.practicum.warehouse.mapper;
 
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.commerce.dto.WarehouseAddress;
-import ru.yandex.practicum.warehouse.dto.WarehouseProductDto;
 import ru.yandex.practicum.warehouse.model.WarehouseProduct;
 
 import java.security.SecureRandom;
@@ -13,35 +12,15 @@ public class WarehouseProductMapper {
     private static final String[] ADDRESSES = new String[] {"ADDRESS_1", "ADDRESS_2"};
     private static final String CURRENT_ADDRESS = ADDRESSES[Random.from(new SecureRandom()).nextInt(0, ADDRESSES.length)];
 
-    public WarehouseProductDto toDto(WarehouseProduct product) {
-        if (product == null) {
-            return null;
-        }
-        return WarehouseProductDto.builder()
-                .id(product.getId())
-                .productId(product.getProductId())
-                .quantity(product.getQuantity())
-                .width(product.getWidth())
-                .height(product.getHeight())
-                .depth(product.getDepth())
-                .weight(product.getWeight())
-                .fragile(product.getFragile())
-                .build();
-    }
-
-    public WarehouseProduct toEntity(WarehouseProductDto dto) {
-        if (dto == null) {
-            return null;
-        }
+    public WarehouseProduct toEntity(ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest request) {
         return WarehouseProduct.builder()
-                .id(dto.getId())
-                .productId(dto.getProductId())
-                .quantity(dto.getQuantity())
-                .width(dto.getWidth())
-                .height(dto.getHeight())
-                .depth(dto.getDepth())
-                .weight(dto.getWeight())
-                .fragile(dto.getFragile())
+                .productId(request.getProductId())
+                .quantity(0L) // Начальное количество = 0
+                .width(request.getDimension().getWidth())
+                .height(request.getDimension().getHeight())
+                .depth(request.getDimension().getDepth())
+                .weight(request.getWeight())
+                .fragile(request.getFragile())
                 .build();
     }
 
@@ -51,7 +30,7 @@ public class WarehouseProductMapper {
                 .city(CURRENT_ADDRESS)
                 .street(CURRENT_ADDRESS)
                 .house(CURRENT_ADDRESS)
-                .apartment(CURRENT_ADDRESS)
+                .flat(CURRENT_ADDRESS) // ИСПРАВЛЕНО: было apartment
                 .build();
     }
 }

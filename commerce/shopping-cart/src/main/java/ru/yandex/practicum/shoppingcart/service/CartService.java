@@ -2,11 +2,10 @@ package ru.yandex.practicum.shoppingcart.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
-import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.commerce.dto.ProductAvailabilityRequest;
+import ru.yandex.practicum.commerce.dto.BookedProductsDto;
+import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
 import ru.yandex.practicum.shoppingcart.exception.CartNotFoundException;
 import ru.yandex.practicum.shoppingcart.exception.InsufficientStockException;
 import ru.yandex.practicum.shoppingcart.feign.WarehouseClient;
@@ -21,6 +20,7 @@ import ru.yandex.practicum.shoppingcart.dto.CartItemDto;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +30,6 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final CartMapper cartMapper;
     private final WarehouseClient warehouseClient;
-    private final CircuitBreakerFactory circuitBreakerFactory;
 
     @Transactional(readOnly = true)
     public CartDto getCart(String username) {
@@ -46,24 +45,24 @@ public class CartService {
         Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
                 .orElseGet(() -> createNewCart(username));
 
-        CircuitBreaker circuitBreaker = circuitBreakerFactory.create("warehouse-check");
-        Map<Long, Integer> availability = circuitBreaker.run(
-                () -> warehouseClient.checkProductsAvailability(
-                        ProductAvailabilityRequest.builder()
-                                .productIds(List.of(itemDto.getProductId()))
-                                .build()
-                ),
-                throwable -> handleWarehouseFailure(itemDto.getProductId())
-        );
+        // Проверяем доступность товара на складе через /check эндпоинт
+        Map<UUID, Long> products = new HashMap<>();
+        products.put(UUID.fromString(itemDto.getProductId().toString()), itemDto.getQuantity().longValue());
 
-        Integer availableQuantity = availability.get(itemDto.getProductId());
-        if (availableQuantity == null || availableQuantity < itemDto.getQuantity()) {
-            throw new InsufficientStockException(String.format(
-                    "Insufficient stock for product %d. Available: %d, Requested: %d",
-                    itemDto.getProductId(), availableQuantity != null ? availableQuantity : 0,
-                    itemDto.getQuantity()));
+        ShoppingCartDto shoppingCartDto = ShoppingCartDto.builder()
+                .shoppingCartId(UUID.randomUUID())
+                .products(products)
+                .build();
+
+        try {
+            BookedProductsDto bookedProducts = warehouseClient.checkProductQuantityEnoughForShoppingCart(shoppingCartDto);
+            log.info("Cart check passed. Delivery weight: {}, volume: {}, fragile: {}",
+                    bookedProducts.getDeliveryWeight(), bookedProducts.getDeliveryVolume(), bookedProducts.getFragile());
+        } catch (Exception e) {
+            throw new InsufficientStockException("Insufficient stock for requested products: " + e.getMessage());
         }
 
+        // Добавляем товар в корзину
         List<CartItem> existingItems = cartItemRepository.findByCartId(cart.getId());
         CartItem existingItem = existingItems.stream()
                 .filter(item -> item.getProductId().equals(itemDto.getProductId()))
@@ -90,21 +89,20 @@ public class CartService {
         Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
                 .orElseThrow(() -> new CartNotFoundException("Active cart not found for user: " + username));
 
-        CircuitBreaker circuitBreaker = circuitBreakerFactory.create("warehouse-check");
-        Map<Long, Integer> availability = circuitBreaker.run(
-                () -> warehouseClient.checkProductsAvailability(
-                        ProductAvailabilityRequest.builder()
-                                .productIds(List.of(productId))
-                                .build()
-                ),
-                throwable -> handleWarehouseFailure(productId)
-        );
+        Map<UUID, Long> products = new HashMap<>();
+        products.put(UUID.fromString(productId.toString()), quantity.longValue());
 
-        Integer availableQuantity = availability.get(productId);
-        if (availableQuantity == null || availableQuantity < quantity) {
-            throw new InsufficientStockException(String.format(
-                    "Insufficient stock for product %d. Available: %d, Requested: %d",
-                    productId, availableQuantity != null ? availableQuantity : 0, quantity));
+        ShoppingCartDto shoppingCartDto = ShoppingCartDto.builder()
+                .shoppingCartId(UUID.randomUUID())
+                .products(products)
+                .build();
+
+        try {
+            BookedProductsDto bookedProducts = warehouseClient.checkProductQuantityEnoughForShoppingCart(shoppingCartDto);
+            log.info("Cart check passed for update. Delivery weight: {}, volume: {}, fragile: {}",
+                    bookedProducts.getDeliveryWeight(), bookedProducts.getDeliveryVolume(), bookedProducts.getFragile());
+        } catch (Exception e) {
+            throw new InsufficientStockException("Insufficient stock for requested products: " + e.getMessage());
         }
 
         List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
@@ -130,13 +128,6 @@ public class CartService {
         cart.setActive(false);
         cartRepository.save(cart);
         log.info("Cart deactivated for user {}", username);
-    }
-
-    private Map<Long, Integer> handleWarehouseFailure(Long productId) {
-        log.warn("Warehouse service is unavailable, returning empty availability");
-        Map<Long, Integer> emptyMap = new HashMap<>();
-        emptyMap.put(productId, 0);
-        return emptyMap;
     }
 
     private Cart createNewCart(String username) {

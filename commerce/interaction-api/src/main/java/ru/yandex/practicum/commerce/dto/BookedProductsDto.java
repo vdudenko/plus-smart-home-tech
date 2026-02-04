@@ -9,10 +9,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WarehouseAddress {
-    private String country;
-    private String city;
-    private String street;
-    private String house;
-    private String flat;
+public class BookedProductsDto {
+    private Double deliveryWeight;
+    private Double deliveryVolume;
+    private Boolean fragile;
 }

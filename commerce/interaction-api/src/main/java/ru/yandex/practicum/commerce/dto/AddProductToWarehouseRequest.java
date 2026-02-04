@@ -5,14 +5,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import jakarta.validation.constraints.Min;
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WarehouseAddress {
-    private String country;
-    private String city;
-    private String street;
-    private String house;
-    private String flat;
+public class AddProductToWarehouseRequest {
+    private UUID productId;
+
+    @Min(1)
+    private Long quantity;
 }
