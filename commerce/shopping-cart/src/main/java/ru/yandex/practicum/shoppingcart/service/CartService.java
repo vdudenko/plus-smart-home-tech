@@ -5,22 +5,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.commerce.dto.BookedProductsDto;
-import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
-import ru.yandex.practicum.shoppingcart.exception.CartNotFoundException;
-import ru.yandex.practicum.shoppingcart.exception.InsufficientStockException;
+import ru.yandex.practicum.shoppingcart.exception.NoProductsInShoppingCartException;
+import ru.yandex.practicum.shoppingcart.exception.NotAuthorizedUserException;
 import ru.yandex.practicum.shoppingcart.feign.WarehouseClient;
 import ru.yandex.practicum.shoppingcart.mapper.CartMapper;
 import ru.yandex.practicum.shoppingcart.model.Cart;
 import ru.yandex.practicum.shoppingcart.model.CartItem;
 import ru.yandex.practicum.shoppingcart.repository.CartItemRepository;
 import ru.yandex.practicum.shoppingcart.repository.CartRepository;
-import ru.yandex.practicum.shoppingcart.dto.CartDto;
-import ru.yandex.practicum.shoppingcart.dto.CartItemDto;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import ru.yandex.practicum.shoppingcart.dto.ChangeProductQuantityRequest;
+import ru.yandex.practicum.shoppingcart.dto.ShoppingCartDto;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,109 +28,142 @@ public class CartService {
     private final WarehouseClient warehouseClient;
 
     @Transactional(readOnly = true)
-    public CartDto getCart(String username) {
-        Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
-                .orElseThrow(() -> new CartNotFoundException("Active cart not found for user: " + username));
-
+    public ShoppingCartDto getShoppingCart(String username) {
+        Cart cart = getActiveCart(username);
         List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
         return cartMapper.toDto(cart, items);
     }
 
     @Transactional
-    public CartDto addToCart(String username, CartItemDto itemDto) {
-        Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
-                .orElseGet(() -> createNewCart(username));
+    public ShoppingCartDto addProductsToCart(String username, Map<UUID, Long> products) {
+        Cart cart = getOrCreateCart(username);
 
-        // Проверяем доступность товара на складе через /check эндпоинт
-        Map<UUID, Long> products = new HashMap<>();
-        products.put(UUID.fromString(itemDto.getProductId().toString()), itemDto.getQuantity().longValue());
+        // Проверяем доступность на складе
+        checkProductsAvailability(products);
 
-        ShoppingCartDto shoppingCartDto = ShoppingCartDto.builder()
-                .shoppingCartId(UUID.randomUUID())
-                .products(products)
-                .build();
-
-        try {
-            BookedProductsDto bookedProducts = warehouseClient.checkProductQuantityEnoughForShoppingCart(shoppingCartDto);
-            log.info("Cart check passed. Delivery weight: {}, volume: {}, fragile: {}",
-                    bookedProducts.getDeliveryWeight(), bookedProducts.getDeliveryVolume(), bookedProducts.getFragile());
-        } catch (Exception e) {
-            throw new InsufficientStockException("Insufficient stock for requested products: " + e.getMessage());
-        }
-
-        // Добавляем товар в корзину
+        // Добавляем/обновляем товары в корзине
         List<CartItem> existingItems = cartItemRepository.findByCartId(cart.getId());
-        CartItem existingItem = existingItems.stream()
-                .filter(item -> item.getProductId().equals(itemDto.getProductId()))
-                .findFirst()
-                .orElse(null);
+        Map<UUID, CartItem> existingMap = existingItems.stream()
+                .collect(Collectors.toMap(CartItem::getProductId, item -> item));
 
-        if (existingItem != null) {
-            existingItem.setQuantity(existingItem.getQuantity() + itemDto.getQuantity());
-            cartItemRepository.save(existingItem);
-        } else {
-            CartItem newItem = cartMapper.toItemEntity(itemDto, cart);
-            cartItemRepository.save(newItem);
+        for (Map.Entry<UUID, Long> entry : products.entrySet()) {
+            UUID productId = entry.getKey();
+            Long quantity = entry.getValue();
+
+            CartItem item = existingMap.get(productId);
+            if (item != null) {
+                item.setQuantity(item.getQuantity() + quantity);
+                cartItemRepository.save(item);
+            } else {
+                CartItem newItem = CartItem.builder()
+                        .cart(cart)
+                        .productId(productId)
+                        .quantity(quantity)
+                        .build();
+                cartItemRepository.save(newItem);
+            }
         }
 
-        log.info("Added {} units of product {} to cart for user {}",
-                itemDto.getQuantity(), itemDto.getProductId(), username);
-
-        List<CartItem> updatedItems = cartItemRepository.findByCartId(cart.getId());
-        return cartMapper.toDto(cart, updatedItems);
-    }
-
-    @Transactional
-    public CartDto updateCartItem(String username, Long productId, Integer quantity) {
-        Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
-                .orElseThrow(() -> new CartNotFoundException("Active cart not found for user: " + username));
-
-        Map<UUID, Long> products = new HashMap<>();
-        products.put(UUID.fromString(productId.toString()), quantity.longValue());
-
-        ShoppingCartDto shoppingCartDto = ShoppingCartDto.builder()
-                .shoppingCartId(UUID.randomUUID())
-                .products(products)
-                .build();
-
-        try {
-            BookedProductsDto bookedProducts = warehouseClient.checkProductQuantityEnoughForShoppingCart(shoppingCartDto);
-            log.info("Cart check passed for update. Delivery weight: {}, volume: {}, fragile: {}",
-                    bookedProducts.getDeliveryWeight(), bookedProducts.getDeliveryVolume(), bookedProducts.getFragile());
-        } catch (Exception e) {
-            throw new InsufficientStockException("Insufficient stock for requested products: " + e.getMessage());
-        }
-
-        List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
-        CartItem itemToUpdate = items.stream()
-                .filter(item -> item.getProductId().equals(productId))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Product not found in cart: " + productId));
-
-        itemToUpdate.setQuantity(quantity);
-        cartItemRepository.save(itemToUpdate);
-
-        log.info("Updated quantity of product {} to {} in cart for user {}", productId, quantity, username);
-
-        List<CartItem> updatedItems = cartItemRepository.findByCartId(cart.getId());
-        return cartMapper.toDto(cart, updatedItems);
+        log.info("Added products to cart for user {}", username);
+        return getShoppingCart(username);
     }
 
     @Transactional
     public void deactivateCart(String username) {
-        Cart cart = cartRepository.findByUsernameAndActiveTrue(username)
-                .orElseThrow(() -> new CartNotFoundException("Active cart not found for user: " + username));
-
+        Cart cart = getActiveCart(username);
         cart.setActive(false);
         cartRepository.save(cart);
         log.info("Cart deactivated for user {}", username);
     }
 
-    private Cart createNewCart(String username) {
-        Cart cart = Cart.builder()
-                .username(username)
-                .active(true)
-                .build();
-        return cartRepository.save(cart);
+    @Transactional
+    public ShoppingCartDto removeProductsFromCart(String username, List<UUID> productIds) {
+        Cart cart = getActiveCart(username);
+        List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
+
+        Set<UUID> existingProductIds = items.stream()
+                .map(CartItem::getProductId)
+                .collect(Collectors.toSet());
+
+        // Проверяем, что все запрашиваемые товары есть в корзине
+        List<UUID> missingProducts = productIds.stream()
+                .filter(id -> !existingProductIds.contains(id))
+                .collect(Collectors.toList());
+
+        if (!missingProducts.isEmpty()) {
+            throw new NoProductsInShoppingCartException(
+                    "Нет искомых товаров в корзине: " + missingProducts);
+        }
+
+        // Удаляем товары
+        for (UUID productId : productIds) {
+            cartItemRepository.deleteByCartIdAndProductId(cart.getId(), productId);
+        }
+
+        log.info("Removed {} products from cart for user {}", productIds.size(), username);
+        return getShoppingCart(username);
+    }
+
+    @Transactional
+    public ShoppingCartDto changeProductQuantity(String username, ChangeProductQuantityRequest request) {
+        Cart cart = getActiveCart(username);
+        List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
+
+        // Находим товар в корзине
+        Optional<CartItem> itemOpt = items.stream()
+                .filter(item -> item.getProductId().equals(request.getProductId()))
+                .findFirst();
+
+        if (itemOpt.isEmpty()) {
+            throw new NoProductsInShoppingCartException(
+                    "Товар не найден в корзине: " + request.getProductId());
+        }
+
+        // Проверяем доступность на складе с новым количеством
+        Map<UUID, Long> checkMap = new HashMap<>();
+        checkMap.put(request.getProductId(), request.getNewQuantity());
+        checkProductsAvailability(checkMap);
+
+        // Обновляем количество
+        CartItem item = itemOpt.get();
+        item.setQuantity(request.getNewQuantity());
+        cartItemRepository.save(item);
+
+        log.info("Changed quantity for product {} to {} in cart for user {}",
+                request.getProductId(), request.getNewQuantity(), username);
+        return getShoppingCart(username);
+    }
+
+    private Cart getActiveCart(String username) {
+        return cartRepository.findByUsernameAndActiveTrue(username)
+                .orElseThrow(() -> new NotAuthorizedUserException(
+                        "Активная корзина не найдена для пользователя: " + username));
+    }
+
+    private Cart getOrCreateCart(String username) {
+        return cartRepository.findByUsernameAndActiveTrue(username)
+                .orElseGet(() -> {
+                    Cart newCart = Cart.builder()
+                            .username(username)
+                            .active(true)
+                            .build();
+                    return cartRepository.save(newCart);
+                });
+    }
+
+    private void checkProductsAvailability(Map<UUID, Long> products) {
+        try {
+            ru.yandex.practicum.commerce.dto.ShoppingCartDto warehouseCart = ru.yandex.practicum.commerce.dto.ShoppingCartDto.builder()
+                    .shoppingCartId(UUID.randomUUID())
+                    .products(products)
+                    .build();
+
+            BookedProductsDto bookedProducts = warehouseClient.checkProductQuantityEnoughForShoppingCart(warehouseCart);
+            log.info("Cart check passed. Delivery weight: {}, volume: {}, fragile: {}",
+                    bookedProducts.getDeliveryWeight(), bookedProducts.getDeliveryVolume(), bookedProducts.getFragile());
+        } catch (Exception e) {
+            throw new NoProductsInShoppingCartException(
+                    "Недостаточно товаров на складе: " + e.getMessage());
+        }
     }
 }
