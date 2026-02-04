@@ -1,15 +1,18 @@
 package ru.yandex.practicum.shoppingstore.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-import ru.yandex.practicum.shoppingstore.model.Product;
 import ru.yandex.practicum.commerce.dto.ProductCategory;
-import ru.yandex.practicum.commerce.dto.ProductStatus;
+import ru.yandex.practicum.commerce.dto.ProductState;
+import ru.yandex.practicum.shoppingstore.model.Product;
 
-import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface ProductRepository extends JpaRepository<Product, Long> {
-    List<Product> findByCategoryAndStatus(ProductCategory category, ProductStatus status);
-    List<Product> findByStatus(ProductStatus status);
+public interface ProductRepository extends JpaRepository<Product, UUID> {
+    Page<Product> findByProductCategoryAndProductState(ProductCategory category, ProductState state, Pageable pageable);
+    Optional<Product> findByProductId(UUID productId);
 }

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum ProductCategory {
+    LIGHTING("LIGHTING"),
     CONTROL("CONTROL"),
-    SENSORS("SENSORS"),
-    LIGHTING("LIGHTING");
+    SENSORS("SENSORS");
 
     private final String value;
 
