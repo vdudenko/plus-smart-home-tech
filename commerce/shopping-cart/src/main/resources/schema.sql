@@ -1,6 +1,5 @@
--- Таблица корзин пользователей
 CREATE TABLE IF NOT EXISTS carts (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(100) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -8,12 +7,11 @@ CREATE TABLE IF NOT EXISTS carts (
     CONSTRAINT uk_username_active UNIQUE (username, active)
 );
 
--- Таблица товаров в корзине
 CREATE TABLE IF NOT EXISTS cart_items (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    cart_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cart_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    quantity BIGINT NOT NULL DEFAULT 1 CHECK (quantity > 0),
     added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_cart_items_cart
         FOREIGN KEY (cart_id)
@@ -21,3 +19,8 @@ CREATE TABLE IF NOT EXISTS cart_items (
         ON DELETE CASCADE,
     CONSTRAINT uk_cart_product UNIQUE (cart_id, product_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_carts_username_active ON carts(username, active);
+CREATE INDEX IF NOT EXISTS idx_carts_active ON carts(active);
+CREATE INDEX IF NOT EXISTS idx_cart_items_cart_id ON cart_items(cart_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_product_id ON cart_items(product_id);
