@@ -1,53 +1,58 @@
 package ru.yandex.practicum.shoppingstore.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.commerce.dto.ProductCategory;
-import ru.yandex.practicum.commerce.dto.ProductDto;
+import ru.yandex.practicum.commerce.dto.*;
+import ru.yandex.practicum.shoppingstore.exception.ProductNotFoundException;
 import ru.yandex.practicum.shoppingstore.service.ProductService;
 
-import java.util.List;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/api/v1/shopping-store") // ИЗМЕНЕНО: новый базовый путь
 @RequiredArgsConstructor
 public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    public ResponseEntity<List<ProductDto>> getProductsByCategory(@RequestParam ProductCategory category) {
-        return ResponseEntity.ok(productService.getProductsByCategory(category));
+    public ResponseEntity<Page<ProductDto>> getProducts(
+            @RequestParam ProductCategory category,
+            @PageableDefault(page = 0, size = 20) Pageable pageable) {
+        return ResponseEntity.ok(productService.getProductsByCategory(category, pageable));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ProductDto> getProductById(@PathVariable Long id) {
-        return ResponseEntity.ok(productService.getProductById(id));
-    }
-
-    @PostMapping
-    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto) {
+    @PutMapping
+    public ResponseEntity<ProductDto> createNewProduct(@RequestBody ProductDto productDto) {
         return ResponseEntity.ok(productService.createProduct(productDto));
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ProductDto> updateProduct(
-            @PathVariable Long id,
-            @RequestBody ProductDto productDto) {
-        return ResponseEntity.ok(productService.updateProduct(id, productDto));
+    @PostMapping
+    public ResponseEntity<ProductDto> updateProduct(@RequestBody ProductDto productDto) {
+        return ResponseEntity.ok(productService.updateProduct(productDto));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        productService.deleteProduct(id);
-        return ResponseEntity.noContent().build();
+    @PostMapping("/removeProductFromStore")
+    public ResponseEntity<Boolean> removeProductFromStore(@RequestBody UUID productId) {
+        return ResponseEntity.ok(productService.removeProductFromStore(productId));
     }
 
-    @PatchMapping("/{id}/availability")
-    public ResponseEntity<Void> updateAvailability(
-            @PathVariable Long id,
-            @RequestParam ru.yandex.practicum.commerce.dto.AvailabilityStatus availability) {
-        productService.updateAvailability(id, availability);
-        return ResponseEntity.noContent().build();
+    @PostMapping("/quantityState")
+    public ResponseEntity<Boolean> setProductQuantityState(@RequestBody SetProductQuantityStateRequest request) {
+        return ResponseEntity.ok(productService.setProductQuantityState(request));
+    }
+
+    @GetMapping("/{productId}")
+    public ResponseEntity<ProductDto> getProduct(@PathVariable UUID productId) {
+        return ResponseEntity.ok(productService.getProductById(productId));
+    }
+
+    // Обработчик исключений
+    @ExceptionHandler(ProductNotFoundException.class)
+    public ResponseEntity<Void> handleProductNotFound(ProductNotFoundException ex) {
+        return ResponseEntity.notFound().build();
     }
 }

@@ -1,17 +1,17 @@
 package ru.yandex.practicum.shoppingstore.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.yandex.practicum.commerce.dto.ProductCategory;
-import ru.yandex.practicum.commerce.dto.ProductDto;
-import ru.yandex.practicum.commerce.dto.ProductStatus;
+import ru.yandex.practicum.commerce.dto.*;
+import ru.yandex.practicum.shoppingstore.exception.ProductNotFoundException;
 import ru.yandex.practicum.shoppingstore.mapper.ProductMapper;
 import ru.yandex.practicum.shoppingstore.model.Product;
 import ru.yandex.practicum.shoppingstore.repository.ProductRepository;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -20,38 +20,40 @@ public class ProductService {
     private final ProductMapper productMapper;
 
     @Transactional(readOnly = true)
-    public List<ProductDto> getProductsByCategory(ProductCategory category) {
-        return productRepository.findByCategoryAndStatus(category, ProductStatus.ACTIVE)
-                .stream()
-                .map(productMapper::toDto)
-                .collect(Collectors.toList());
+    public Page<ProductDto> getProductsByCategory(ProductCategory category, Pageable pageable) {
+        Page<Product> products = productRepository.findByProductCategoryAndProductState(
+                category,
+                ProductState.ACTIVE,
+                pageable
+        );
+        return products.map(productMapper::toDto);
     }
 
     @Transactional(readOnly = true)
-    public ProductDto getProductById(Long id) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
+    public ProductDto getProductById(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ProductNotFoundException("Product not found: " + productId));
         return productMapper.toDto(product);
     }
 
     @Transactional
     public ProductDto createProduct(ProductDto productDto) {
         Product product = productMapper.toEntity(productDto);
-        product.setStatus(ProductStatus.ACTIVE);
+        product.setProductState(ProductState.ACTIVE);
         Product saved = productRepository.save(product);
         return productMapper.toDto(saved);
     }
 
     @Transactional
-    public ProductDto updateProduct(Long id, ProductDto productDto) {
-        Product existing = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
+    public ProductDto updateProduct(ProductDto productDto) {
+        Product existing = productRepository.findById(productDto.getProductId())
+                .orElseThrow(() -> new ProductNotFoundException("Product not found: " + productDto.getProductId()));
 
-        existing.setName(productDto.getName());
+        existing.setProductName(productDto.getProductName());
         existing.setDescription(productDto.getDescription());
-        existing.setCategory(productDto.getCategory());
-        existing.setImages(productDto.getImages());
-        existing.setAvailability(productDto.getAvailability());
+        existing.setImageSrc(productDto.getImageSrc());
+        existing.setQuantityState(productDto.getQuantityState());
+        existing.setProductCategory(productDto.getProductCategory());
         existing.setPrice(productDto.getPrice());
 
         Product updated = productRepository.save(existing);
@@ -59,18 +61,26 @@ public class ProductService {
     }
 
     @Transactional
-    public void deleteProduct(Long id) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
-        product.setStatus(ProductStatus.DEACTIVATE);
+    public boolean removeProductFromStore(UUID productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ProductNotFoundException("Product not found: " + productId));
+
+        if (product.getProductState() == ProductState.DEACTIVATE) {
+            return false;
+        }
+
+        product.setProductState(ProductState.DEACTIVATE);
         productRepository.save(product);
+        return true;
     }
 
     @Transactional
-    public void updateAvailability(Long id, ru.yandex.practicum.commerce.dto.AvailabilityStatus availability) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
-        product.setAvailability(availability);
+    public boolean setProductQuantityState(SetProductQuantityStateRequest request) {
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new ProductNotFoundException("Product not found: " + request.getProductId()));
+
+        product.setQuantityState(request.getQuantityState());
         productRepository.save(product);
+        return true;
     }
 }

@@ -11,13 +11,13 @@ public class ProductMapper {
             return null;
         }
         return ProductDto.builder()
-                .id(product.getId())
-                .name(product.getName())
+                .productId(product.getId())
+                .productName(product.getProductName())
                 .description(product.getDescription())
-                .category(product.getCategory())
-                .images(product.getImages())
-                .availability(product.getAvailability())
-                .status(product.getStatus())
+                .imageSrc(product.getImageSrc())
+                .quantityState(product.getQuantityState())
+                .productState(product.getProductState())
+                .productCategory(product.getProductCategory())
                 .price(product.getPrice())
                 .build();
     }
@@ -27,13 +27,13 @@ public class ProductMapper {
             return null;
         }
         return Product.builder()
-                .id(dto.getId())
-                .name(dto.getName())
+                .id(dto.getProductId())
+                .productName(dto.getProductName())
                 .description(dto.getDescription())
-                .category(dto.getCategory())
-                .images(dto.getImages())
-                .availability(dto.getAvailability())
-                .status(dto.getStatus())
+                .imageSrc(dto.getImageSrc())
+                .quantityState(dto.getQuantityState())
+                .productState(dto.getProductState())
+                .productCategory(dto.getProductCategory())
                 .price(dto.getPrice())
                 .build();
     }
