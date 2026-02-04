@@ -41,8 +41,8 @@ public class ProductController {
     }
 
     @PostMapping("/quantityState")
-    public ResponseEntity<Boolean> setProductQuantityState(@RequestBody SetProductQuantityStateRequest request) {
-        return ResponseEntity.ok(productService.setProductQuantityState(request));
+    public Boolean setProductQuantityState(@RequestBody SetProductQuantityStateRequest request) {
+        return productService.setProductQuantityState(request);
     }
 
     @GetMapping("/{productId}")

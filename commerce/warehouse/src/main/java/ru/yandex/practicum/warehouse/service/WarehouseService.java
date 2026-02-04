@@ -5,10 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.commerce.dto.*;
+import ru.yandex.practicum.warehouse.feign.ShoppingStoreClient;
 import ru.yandex.practicum.warehouse.mapper.WarehouseProductMapper;
 import ru.yandex.practicum.warehouse.model.WarehouseProduct;
 import ru.yandex.practicum.warehouse.repository.WarehouseProductRepository;
+import ru.yandex.practicum.warehouse.util.QuantityStateCalculator;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,6 +22,7 @@ import java.util.UUID;
 public class WarehouseService {
     private final WarehouseProductRepository warehouseProductRepository;
     private final WarehouseProductMapper warehouseProductMapper;
+    private final ShoppingStoreClient shoppingStoreClient; // ← Клиент для вызова витрины
 
     @Transactional(readOnly = true)
     public WarehouseAddress getWarehouseAddress() {
@@ -42,10 +46,14 @@ public class WarehouseService {
         WarehouseProduct product = warehouseProductRepository.findByProductId(request.getProductId())
                 .orElseThrow(() -> new RuntimeException("Product not found in warehouse: " + request.getProductId()));
 
-        product.setQuantity(product.getQuantity() + request.getQuantity());
+        Long oldQuantity = product.getQuantity();
+        product.setQuantity(oldQuantity + request.getQuantity());
         warehouseProductRepository.save(product);
-        log.info("Increased quantity for product {} by {}. New quantity: {}",
-                request.getProductId(), request.getQuantity(), product.getQuantity());
+        log.info("Increased quantity for product {} from {} to {}",
+                request.getProductId(), oldQuantity, product.getQuantity());
+
+        // Автоматически обновляем статус остатка на витрине
+        updateQuantityStateOnShoppingStore(request.getProductId(), product.getQuantity());
     }
 
     @Transactional(readOnly = true)
@@ -82,5 +90,32 @@ public class WarehouseService {
                 .deliveryVolume(totalVolume)
                 .fragile(hasFragile)
                 .build();
+    }
+
+    /**
+     * Обновляет статус остатка товара на витрине товаров.
+     * Вызывается автоматически при изменении количества на складе.
+     */
+    private void updateQuantityStateOnShoppingStore(UUID productId, Long quantity) {
+        try {
+            QuantityState newState = QuantityStateCalculator.calculate(quantity);
+
+            SetProductQuantityStateRequest request = SetProductQuantityStateRequest.builder()
+                    .productId(productId)
+                    .quantityState(newState)
+                    .build();
+
+            // Вызов витрины через Feign-клиент (контракт ShoppingStoreApi)
+            Boolean success = shoppingStoreClient.setProductQuantityState(request);
+
+            if (Boolean.TRUE.equals(success)) {
+                log.info("Successfully updated quantity state for product {} to {}", productId, newState);
+            } else {
+                log.warn("Failed to update quantity state for product {} to {}", productId, newState);
+            }
+        } catch (Exception e) {
+            // Не падаем при ошибке обновления витрины — это второстепенная операция
+            log.error("Error updating quantity state for product {} on shopping-store: {}", productId, e.getMessage());
+        }
     }
 }
