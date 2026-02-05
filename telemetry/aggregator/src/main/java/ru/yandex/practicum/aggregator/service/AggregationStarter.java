@@ -17,6 +17,9 @@ import ru.yandex.practicum.kafka.telemetry.event.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Component
@@ -133,23 +136,20 @@ public class AggregationStarter {
                 return;
             }
 
-            // Публикуем снапшот в топик (асинхронно с колбэком для логирования)
+            // Публикуем снапшот в топик (СИНХРОННО с таймаутом 1 сек для гарантии в тестах)
             ProducerRecord<String, byte[]> record = new ProducerRecord<>(
                     "telemetry.snapshots.v1",
                     hubId,
                     snapshotBytes
             );
 
-            producer.send(record, (metadata, exception) -> {
-                if (exception == null) {
-                    log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={}",
-                            hubId, metadata.partition(), metadata.offset());
-                } else {
-                    log.error("Failed to publish snapshot for hub {}", hubId, exception);
-                }
-            });
-
-            // ВАЖНО: НЕ вызываем producer.flush() здесь — это вызывает блокировку и таймауты в тестах
+            try {
+                RecordMetadata metadata = producer.send(record).get(1, TimeUnit.SECONDS);
+                log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={}",
+                        hubId, metadata.partition(), metadata.offset());
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                log.error("Failed to publish snapshot for hub {} within timeout", hubId, e);
+            }
 
         } catch (Exception e) {
             log.error("Error processing event: hubId={}, deviceId={}",
@@ -165,7 +165,7 @@ public class AggregationStarter {
 
     private void shutdownResources() {
         try {
-            if (producer != null) producer.flush(); // flush только при завершении работы
+            if (producer != null) producer.flush();
             if (consumer != null) consumer.commitSync();
         } catch (Exception e) {
             log.warn("Error during shutdown", e);
