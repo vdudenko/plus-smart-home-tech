@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +33,7 @@ public class AggregationStarter {
 
     @PostConstruct
     public void init() {
-        log.info("🔧 Initializing Aggregator with Kafka at {}", bootstrapServers);
+        log.info("Initializing Aggregator with Kafka at {}", bootstrapServers);
 
         Properties consumerProps = new Properties();
         consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
@@ -56,8 +55,7 @@ public class AggregationStarter {
 
     public void start() {
         consumer.subscribe(Collections.singletonList("telemetry.sensors.v1"));
-        log.info("Aggregator STARTED. Listening to telemetry.sensors.v1...");
-        log.info("First snapshot will be published AFTER first sensor event is processed");
+        log.info("Aggregator STARTED. Listening to telemetry.sensors.v1");
 
         try {
             while (true) {
@@ -87,44 +85,34 @@ public class AggregationStarter {
             log.debug("Processing event: hubId={}, deviceId={}, payloadType={}",
                     hubId, deviceId, payload != null ? payload.getClass().getSimpleName() : "null");
 
-            // Получаем/создаём снапшот для хаба
             Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
             Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
-            Map<String, String> previousState = new HashMap<>(deviceState); // Копия ДО изменений
 
-            // Обрабатываем payload в зависимости от типа
+            boolean wasEmpty = deviceState.isEmpty();
+            Map<String, String> previousState = new HashMap<>(deviceState);
+
             if (payload instanceof ClimateSensorAvro) {
                 ClimateSensorAvro climate = (ClimateSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(climate.getTemperatureC()));
                 deviceState.put("humidity", String.valueOf(climate.getHumidity()));
-                log.debug("Climate sensor: temp={}, humidity={}", climate.getTemperatureC(), climate.getHumidity());
-            }
-            else if (payload instanceof LightSensorAvro) {
+            } else if (payload instanceof LightSensorAvro) {
                 LightSensorAvro light = (LightSensorAvro) payload;
                 deviceState.put("illumination", String.valueOf(light.getLuminosity()));
-                log.debug("Light sensor: illumination={}", light.getLuminosity());
-            }
-            else if (payload instanceof MotionSensorAvro) {
+            } else if (payload instanceof MotionSensorAvro) {
                 MotionSensorAvro motion = (MotionSensorAvro) payload;
                 deviceState.put("motion", String.valueOf(motion.getMotion()));
-                log.debug("Motion sensor: motion={}", motion.getMotion());
-            }
-            else if (payload instanceof SwitchSensorAvro) {
+            } else if (payload instanceof SwitchSensorAvro) {
                 SwitchSensorAvro sw = (SwitchSensorAvro) payload;
                 deviceState.put("state", String.valueOf(sw.getState()));
-                log.debug("Switch sensor: state={}", sw.getState());
-            }
-            else if (payload instanceof TemperatureSensorAvro) {
+            } else if (payload instanceof TemperatureSensorAvro) {
                 TemperatureSensorAvro temp = (TemperatureSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(temp.getTemperatureC()));
-                log.debug("Temperature sensor: temp={}", temp.getTemperatureC());
-            }
-            else {
+            } else {
                 log.warn("Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
                 return;
             }
 
-            if (previousState.equals(deviceState)) {
+            if (!wasEmpty && previousState.equals(deviceState)) {
                 log.debug("State unchanged for device {}@{}, skipping publication", deviceId, hubId);
                 return;
             }
@@ -137,23 +125,22 @@ public class AggregationStarter {
                 return;
             }
 
-            // Публикуем снапшот в топик (СИНХРОННО для гарантии в тестах)
             ProducerRecord<String, byte[]> record = new ProducerRecord<>(
                     "telemetry.snapshots.v1",
                     hubId,
                     snapshotBytes
             );
 
-            try {
-                RecordMetadata metadata = producer.send(record).get(); // Синхронная отправка
-                log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={} | devices={}",
-                        hubId, metadata.partition(), metadata.offset(), hubSnapshot.size());
-                log.debug("📊 Snapshot content: {}", new String(snapshotBytes, StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                log.error("Failed to publish snapshot for hub {}", hubId, e);
-            }
+            producer.send(record, (metadata, exception) -> {
+                if (exception == null) {
+                    log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={}",
+                            hubId, metadata.partition(), metadata.offset());
+                } else {
+                    log.error("Failed to publish snapshot for hub {}", hubId, exception);
+                }
+            });
 
-            producer.flush(); // Дополнительная гарантия для тестов
+            producer.flush();
 
         } catch (Exception e) {
             log.error("Error processing event: hubId={}, deviceId={}",
