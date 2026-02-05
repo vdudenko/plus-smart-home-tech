@@ -88,35 +88,43 @@ public class AggregationStarter {
             Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
             Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
 
-            boolean wasEmpty = deviceState.isEmpty();
+            // Создаем копию состояния ДО изменений
             Map<String, String> previousState = new HashMap<>(deviceState);
 
+            // Обрабатываем payload в зависимости от типа
             if (payload instanceof ClimateSensorAvro) {
                 ClimateSensorAvro climate = (ClimateSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(climate.getTemperatureC()));
                 deviceState.put("humidity", String.valueOf(climate.getHumidity()));
-            } else if (payload instanceof LightSensorAvro) {
+            }
+            else if (payload instanceof LightSensorAvro) {
                 LightSensorAvro light = (LightSensorAvro) payload;
                 deviceState.put("illumination", String.valueOf(light.getLuminosity()));
-            } else if (payload instanceof MotionSensorAvro) {
+            }
+            else if (payload instanceof MotionSensorAvro) {
                 MotionSensorAvro motion = (MotionSensorAvro) payload;
                 deviceState.put("motion", String.valueOf(motion.getMotion()));
-            } else if (payload instanceof SwitchSensorAvro) {
+            }
+            else if (payload instanceof SwitchSensorAvro) {
                 SwitchSensorAvro sw = (SwitchSensorAvro) payload;
                 deviceState.put("state", String.valueOf(sw.getState()));
-            } else if (payload instanceof TemperatureSensorAvro) {
+            }
+            else if (payload instanceof TemperatureSensorAvro) {
                 TemperatureSensorAvro temp = (TemperatureSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(temp.getTemperatureC()));
-            } else {
+            }
+            else {
                 log.warn("Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
                 return;
             }
 
-            if (!wasEmpty && previousState.equals(deviceState)) {
+            // Публикуем снапшот ТОЛЬКО если состояние изменилось
+            if (previousState.equals(deviceState)) {
                 log.debug("State unchanged for device {}@{}, skipping publication", deviceId, hubId);
                 return;
             }
 
+            // Сериализуем снапшот в JSON
             byte[] snapshotBytes;
             try {
                 snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
@@ -125,6 +133,7 @@ public class AggregationStarter {
                 return;
             }
 
+            // Публикуем снапшот в топик (асинхронно с колбэком для логирования)
             ProducerRecord<String, byte[]> record = new ProducerRecord<>(
                     "telemetry.snapshots.v1",
                     hubId,
@@ -140,7 +149,7 @@ public class AggregationStarter {
                 }
             });
 
-            producer.flush();
+            // УБРАНО: producer.flush() — вызывает блокировку и таймауты в тестах
 
         } catch (Exception e) {
             log.error("Error processing event: hubId={}, deviceId={}",
@@ -156,7 +165,7 @@ public class AggregationStarter {
 
     private void shutdownResources() {
         try {
-            if (producer != null) producer.flush();
+            if (producer != null) producer.flush(); // flush только при завершении
             if (consumer != null) consumer.commitSync();
         } catch (Exception e) {
             log.warn("Error during shutdown", e);
