@@ -1,43 +1,50 @@
 package ru.yandex.practicum.aggregator.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
-import ru.yandex.practicum.kafka.telemetry.event.*;
+import ru.yandex.practicum.aggregator.util.SnapshotManager;
+import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
+import java.util.Collections;
+import java.util.Properties;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class AggregationStarter {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final SnapshotManager snapshotManager;
     private KafkaConsumer<String, SensorEventAvro> consumer;
     private KafkaProducer<String, byte[]> producer;
 
-    @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
+    @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    private final Map<String, Map<String, Map<String, String>>> snapshots = new ConcurrentHashMap<>();
+    private final Queue<SensorEventAvro> eventBuffer = new ConcurrentLinkedQueue<>();
+    private volatile boolean processingScheduled = false;
 
     @PostConstruct
     public void init() {
-        log.info("Initializing Aggregator with Kafka at {}", bootstrapServers);
-
+        // Consumer
         Properties consumerProps = new Properties();
         consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "aggregator-group");
@@ -46,133 +53,84 @@ public class AggregationStarter {
         consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         consumer = new KafkaConsumer<>(consumerProps);
-        log.info("Kafka Consumer initialized for topic telemetry.sensors.v1");
 
+        // Producer
         Properties producerProps = new Properties();
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer");
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
         producer = new KafkaProducer<>(producerProps);
-        log.info("Kafka Producer initialized for topic telemetry.snapshots.v1");
     }
 
     public void start() {
         consumer.subscribe(Collections.singletonList("telemetry.sensors.v1"));
-        log.info("Aggregator STARTED. Listening to telemetry.sensors.v1");
+        log.info("Aggregator started. Listening to telemetry.sensors.v1...");
 
         try {
             while (true) {
                 ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(100));
                 for (ConsumerRecord<String, SensorEventAvro> record : records) {
-                    processSensorEvent(record.value());
+                    handleEvent(record.value());
                 }
-                if (!records.isEmpty()) {
-                    consumer.commitSync();
-                }
+                consumer.commitSync();
             }
         } catch (WakeupException e) {
             log.info("Consumer woken up for shutdown");
         } catch (Exception e) {
-            log.error("FATAL ERROR in aggregator", e);
+            log.error("Error during aggregation", e);
         } finally {
-            shutdownResources();
+            try {
+                producer.flush(); // сброс буферов
+                consumer.commitSync(); // фиксация оффсетов
+            } finally {
+                consumer.close();
+                producer.close();
+                log.info("Aggregator stopped");
+            }
         }
     }
 
-    private void processSensorEvent(SensorEventAvro event) {
+    private void handleEvent(SensorEventAvro event) {
+        eventBuffer.add(event);
+        if (!processingScheduled) {
+            processingScheduled = true;
+            CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
+                    .execute(this::processBufferedEvents);
+        }
+    }
+
+    private void processBufferedEvents() {
         try {
-            String hubId = event.getHubId();
-            String deviceId = event.getId();
-            Object payload = event.getPayload();
-
-            log.debug("Processing event: hubId={}, deviceId={}, payloadType={}",
-                    hubId, deviceId, payload != null ? payload.getClass().getSimpleName() : "null");
-
-            Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
-            Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
-
-            // Сохраняем предыдущее состояние ДО изменений
-            Map<String, String> previousState = new HashMap<>(deviceState);
-
-            // Обрабатываем payload в зависимости от типа
-            if (payload instanceof ClimateSensorAvro) {
-                ClimateSensorAvro climate = (ClimateSensorAvro) payload;
-                deviceState.put("temperature", String.valueOf(climate.getTemperatureC()));
-                deviceState.put("humidity", String.valueOf(climate.getHumidity()));
+            SensorEventAvro event;
+            while ((event = eventBuffer.poll()) != null) {
+                snapshotManager.updateState(event)
+                        .ifPresent(snapshot -> {
+                            byte[] data = serializeAvro(snapshot);
+                            producer.send(new ProducerRecord<>("telemetry.snapshots.v1",
+                                    snapshot.getHubId(), data));
+                        });
             }
-            else if (payload instanceof LightSensorAvro) {
-                LightSensorAvro light = (LightSensorAvro) payload;
-                deviceState.put("illumination", String.valueOf(light.getLuminosity()));
-            }
-            else if (payload instanceof MotionSensorAvro) {
-                MotionSensorAvro motion = (MotionSensorAvro) payload;
-                deviceState.put("motion", String.valueOf(motion.getMotion()));
-            }
-            else if (payload instanceof SwitchSensorAvro) {
-                SwitchSensorAvro sw = (SwitchSensorAvro) payload;
-                deviceState.put("state", String.valueOf(sw.getState()));
-            }
-            else if (payload instanceof TemperatureSensorAvro) {
-                TemperatureSensorAvro temp = (TemperatureSensorAvro) payload;
-                deviceState.put("temperature", String.valueOf(temp.getTemperatureC()));
-            }
-            else {
-                log.warn("Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
-                return;
-            }
-
-            // Публикуем снапшот ТОЛЬКО если состояние изменилось
-            if (previousState.equals(deviceState)) {
-                log.debug("State unchanged for device {}@{}, skipping publication", deviceId, hubId);
-                return;
-            }
-
-            // Сериализуем снапшот в JSON
-            byte[] snapshotBytes;
-            try {
-                snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
-            } catch (JsonProcessingException e) {
-                log.error("Serialization error for hub {}", hubId, e);
-                return;
-            }
-
-            // Публикуем снапшот в топик (СИНХРОННО с таймаутом 1 сек для гарантии в тестах)
-            ProducerRecord<String, byte[]> record = new ProducerRecord<>(
-                    "telemetry.snapshots.v1",
-                    hubId,
-                    snapshotBytes
-            );
-
-            try {
-                RecordMetadata metadata = producer.send(record).get(1, TimeUnit.SECONDS);
-                log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={}",
-                        hubId, metadata.partition(), metadata.offset());
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                log.error("Failed to publish snapshot for hub {} within timeout", hubId, e);
-            }
-
-        } catch (Exception e) {
-            log.error("Error processing event: hubId={}, deviceId={}",
-                    event.getHubId(), event.getId(), e);
+        } finally {
+            processingScheduled = false;
         }
     }
 
     @PreDestroy
     public void shutdown() {
-        log.info("Shutting down aggregator...");
-        if (consumer != null) consumer.wakeup();
+        consumer.wakeup(); // прерывает poll()
     }
 
-    private void shutdownResources() {
-        try {
-            if (producer != null) producer.flush();
-            if (consumer != null) consumer.commitSync();
+    private byte[] serializeAvro(org.apache.avro.specific.SpecificRecord avro) {
+        try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            org.apache.avro.io.DatumWriter<org.apache.avro.specific.SpecificRecord> writer =
+                    new org.apache.avro.specific.SpecificDatumWriter<>(avro.getSchema());
+            org.apache.avro.io.BinaryEncoder encoder =
+                    org.apache.avro.io.EncoderFactory.get().binaryEncoder(out, null);
+            writer.write(avro, encoder);
+            encoder.flush();
+            return out.toByteArray();
         } catch (Exception e) {
-            log.warn("Error during shutdown", e);
-        } finally {
-            if (consumer != null) consumer.close();
-            if (producer != null) producer.close();
-            log.info("Aggregator STOPPED");
+            throw new RuntimeException("Failed to serialize Avro", e);
         }
     }
 }
