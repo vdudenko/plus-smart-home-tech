@@ -38,10 +38,8 @@ public class CartService {
     public ShoppingCartDto addProductsToCart(String username, Map<UUID, Long> products) {
         Cart cart = getOrCreateCart(username);
 
-        // Проверяем доступность на складе
         checkProductsAvailability(products);
 
-        // Добавляем/обновляем товары в корзине
         List<CartItem> existingItems = cartItemRepository.findByCartId(cart.getId());
         Map<UUID, CartItem> existingMap = existingItems.stream()
                 .collect(Collectors.toMap(CartItem::getProductId, item -> item));
@@ -85,7 +83,6 @@ public class CartService {
                 .map(CartItem::getProductId)
                 .collect(Collectors.toSet());
 
-        // Проверяем, что все запрашиваемые товары есть в корзине
         List<UUID> missingProducts = productIds.stream()
                 .filter(id -> !existingProductIds.contains(id))
                 .collect(Collectors.toList());
@@ -95,7 +92,6 @@ public class CartService {
                     "Нет искомых товаров в корзине: " + missingProducts);
         }
 
-        // Удаляем товары
         for (UUID productId : productIds) {
             cartItemRepository.deleteByCartIdAndProductId(cart.getId(), productId);
         }
@@ -109,7 +105,6 @@ public class CartService {
         Cart cart = getActiveCart(username);
         List<CartItem> items = cartItemRepository.findByCartId(cart.getId());
 
-        // Находим товар в корзине
         Optional<CartItem> itemOpt = items.stream()
                 .filter(item -> item.getProductId().equals(request.getProductId()))
                 .findFirst();
@@ -119,12 +114,10 @@ public class CartService {
                     "Товар не найден в корзине: " + request.getProductId());
         }
 
-        // Проверяем доступность на складе с новым количеством
         Map<UUID, Long> checkMap = new HashMap<>();
         checkMap.put(request.getProductId(), request.getNewQuantity());
         checkProductsAvailability(checkMap);
 
-        // Обновляем количество
         CartItem item = itemOpt.get();
         item.setQuantity(request.getNewQuantity());
         cartItemRepository.save(item);
