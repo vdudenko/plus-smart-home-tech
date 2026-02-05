@@ -88,7 +88,7 @@ public class AggregationStarter {
             Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
             Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
 
-            // Создаем копию состояния ДО изменений
+            // Сохраняем предыдущее состояние ДО изменений
             Map<String, String> previousState = new HashMap<>(deviceState);
 
             // Обрабатываем payload в зависимости от типа
@@ -149,7 +149,7 @@ public class AggregationStarter {
                 }
             });
 
-            // УБРАНО: producer.flush() — вызывает блокировку и таймауты в тестах
+            // ВАЖНО: НЕ вызываем producer.flush() здесь — это вызывает блокировку и таймауты в тестах
 
         } catch (Exception e) {
             log.error("Error processing event: hubId={}, deviceId={}",
@@ -165,7 +165,7 @@ public class AggregationStarter {
 
     private void shutdownResources() {
         try {
-            if (producer != null) producer.flush(); // flush только при завершении
+            if (producer != null) producer.flush(); // flush только при завершении работы
             if (consumer != null) consumer.commitSync();
         } catch (Exception e) {
             log.warn("Error during shutdown", e);
