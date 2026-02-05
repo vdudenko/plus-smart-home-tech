@@ -1,5 +1,6 @@
 package ru.yandex.practicum.aggregator.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,25 +44,24 @@ public class AggregationStarter {
         consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         consumer = new KafkaConsumer<>(consumerProps);
-        log.info("Kafka Consumer initialized");
+        log.info("Kafka Consumer initialized for topic telemetry.sensors.v1");
 
         Properties producerProps = new Properties();
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer");
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
         producer = new KafkaProducer<>(producerProps);
-        log.info("Kafka Producer initialized");
+        log.info("Kafka Producer initialized for topic telemetry.snapshots.v1");
     }
 
     public void start() {
         consumer.subscribe(Collections.singletonList("telemetry.sensors.v1"));
+        log.info("Aggregator STARTED. Listening to telemetry.sensors.v1...");
+        log.info("First snapshot will be published AFTER first sensor event is processed");
 
         try {
             while (true) {
                 ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(100));
-                if (records.count() > 0) {
-                    log.info("Received {} event(s) from telemetry.sensors.v1", records.count());
-                }
                 for (ConsumerRecord<String, SensorEventAvro> record : records) {
                     processSensorEvent(record.value());
                 }
@@ -86,65 +87,77 @@ public class AggregationStarter {
             log.debug("Processing event: hubId={}, deviceId={}, payloadType={}",
                     hubId, deviceId, payload != null ? payload.getClass().getSimpleName() : "null");
 
+            // Получаем/создаём снапшот для хаба
             Map<String, Map<String, String>> hubSnapshot = snapshots.computeIfAbsent(hubId, k -> new ConcurrentHashMap<>());
             Map<String, String> deviceState = hubSnapshot.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
-            Map<String, String> previousState = new HashMap<>(deviceState);
+            Map<String, String> previousState = new HashMap<>(deviceState); // Копия ДО изменений
 
-            boolean stateChanged = false;
+            // Обрабатываем payload в зависимости от типа
             if (payload instanceof ClimateSensorAvro) {
                 ClimateSensorAvro climate = (ClimateSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(climate.getTemperatureC()));
                 deviceState.put("humidity", String.valueOf(climate.getHumidity()));
-                stateChanged = true;
-                log.debug("Climate sensor updated: temp={}, humidity={}", climate.getTemperatureC(), climate.getHumidity());
-            } else if (payload instanceof LightSensorAvro) {
+                log.debug("Climate sensor: temp={}, humidity={}", climate.getTemperatureC(), climate.getHumidity());
+            }
+            else if (payload instanceof LightSensorAvro) {
                 LightSensorAvro light = (LightSensorAvro) payload;
                 deviceState.put("illumination", String.valueOf(light.getLuminosity()));
-                stateChanged = true;
-                log.debug("Light sensor updated: illumination={}", light.getLuminosity());
-            } else if (payload instanceof MotionSensorAvro) {
+                log.debug("Light sensor: illumination={}", light.getLuminosity());
+            }
+            else if (payload instanceof MotionSensorAvro) {
                 MotionSensorAvro motion = (MotionSensorAvro) payload;
                 deviceState.put("motion", String.valueOf(motion.getMotion()));
-                stateChanged = true;
-                log.debug("Motion sensor updated: motion={}", motion.getMotion());
-            } else if (payload instanceof SwitchSensorAvro) {
+                log.debug("Motion sensor: motion={}", motion.getMotion());
+            }
+            else if (payload instanceof SwitchSensorAvro) {
                 SwitchSensorAvro sw = (SwitchSensorAvro) payload;
                 deviceState.put("state", String.valueOf(sw.getState()));
-                stateChanged = true;
-                log.debug("Switch sensor updated: state={}", sw.getState());
-            } else if (payload instanceof TemperatureSensorAvro) {
+                log.debug("Switch sensor: state={}", sw.getState());
+            }
+            else if (payload instanceof TemperatureSensorAvro) {
                 TemperatureSensorAvro temp = (TemperatureSensorAvro) payload;
                 deviceState.put("temperature", String.valueOf(temp.getTemperatureC()));
-                stateChanged = true;
-                log.debug("Temperature sensor updated: temp={}", temp.getTemperatureC());
+                log.debug("Temperature sensor: temp={}", temp.getTemperatureC());
             }
             else {
                 log.warn("Unknown payload type: {}", payload != null ? payload.getClass().getSimpleName() : "null");
                 return;
             }
 
-            // Публикуем ТОЛЬКО при изменении состояния
-            if (!stateChanged || previousState.equals(deviceState)) {
+            if (previousState.equals(deviceState)) {
                 log.debug("State unchanged for device {}@{}, skipping publication", deviceId, hubId);
                 return;
             }
 
-            byte[] snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
-            ProducerRecord<String, byte[]> record = new ProducerRecord<>("telemetry.snapshots.v1", hubId, snapshotBytes);
+            byte[] snapshotBytes;
+            try {
+                snapshotBytes = objectMapper.writeValueAsBytes(hubSnapshot);
+            } catch (JsonProcessingException e) {
+                log.error("Serialization error for hub {}", hubId, e);
+                return;
+            }
 
-            producer.send(record, (metadata, exception) -> {
-                if (exception == null) {
-                    log.info("PUBLISHED SNAPSHOT for hub {} (partition={}, offset={}) | Snapshot: {}",
-                            hubId, metadata.partition(), metadata.offset(), new String(snapshotBytes));
-                } else {
-                    log.error("Failed to publish snapshot for hub {}", hubId, exception);
-                }
-            });
-            producer.flush(); // Гарантия отправки для тестов
+            // Публикуем снапшот в топик (СИНХРОННО для гарантии в тестах)
+            ProducerRecord<String, byte[]> record = new ProducerRecord<>(
+                    "telemetry.snapshots.v1",
+                    hubId,
+                    snapshotBytes
+            );
 
-            log.info("Snapshot published for hub {} with {} devices", hubId, hubSnapshot.size());
+            try {
+                RecordMetadata metadata = producer.send(record).get(); // Синхронная отправка
+                log.info("PUBLISHED SNAPSHOT for hub {} | partition={}, offset={} | devices={}",
+                        hubId, metadata.partition(), metadata.offset(), hubSnapshot.size());
+                log.debug("📊 Snapshot content: {}", new String(snapshotBytes, StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                log.error("Failed to publish snapshot for hub {}", hubId, e);
+            }
+
+            producer.flush(); // Дополнительная гарантия для тестов
+
         } catch (Exception e) {
-            log.error("Error processing event: {}", event, e);
+            log.error("Error processing event: hubId={}, deviceId={}",
+                    event.getHubId(), event.getId(), e);
         }
     }
 
