@@ -1,5 +1,6 @@
 package ru.yandex.practicum.aggregator.util;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
@@ -11,6 +12,11 @@ import java.util.Optional;
 public class SnapshotManager {
 
     private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
+
+    @PostConstruct
+    public void init() {
+        clear(); // Очищаем состояние ПРИ КАЖДОМ запуске сервиса
+    }
 
     public Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId();

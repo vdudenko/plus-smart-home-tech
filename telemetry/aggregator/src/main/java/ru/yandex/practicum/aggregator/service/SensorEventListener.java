@@ -12,8 +12,10 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
+import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
 import java.io.ByteArrayOutputStream;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -23,14 +25,22 @@ public class SensorEventListener {
     private final SnapshotManager snapshotManager;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
-    @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-group")
+    @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-group-${random.uuid}")
     public void handleSensorEvent(SensorEventAvro event) {
-        snapshotManager.updateState(event).ifPresent(snapshot -> {
-            byte[] data = serializeAvro(snapshot);
-            kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data);
-            log.info("SNAPSHOT_PUBLISHED hub={} devices={}",
-                    snapshot.getHubId(), snapshot.getSensorsState().size());
-        });
+        try {
+            snapshotManager.updateState(event).ifPresent(snapshot -> {
+                byte[] data = serializeAvro(snapshot);
+
+                kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
+                        .get(1, TimeUnit.SECONDS);
+
+                log.info("SNAPSHOT_PUBLISHED hub={} devices={}",
+                        snapshot.getHubId(), snapshot.getSensorsState().size());
+            });
+        } catch (Exception e) {
+            log.error("ERROR processing event: hubId={}, deviceId={}",
+                    event.getHubId(), event.getId(), e);
+        }
     }
 
     private byte[] serializeAvro(SpecificRecord avro) {
@@ -41,7 +51,8 @@ public class SensorEventListener {
             encoder.flush();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("Serialization failed", e);
+            throw new RuntimeException("Serialization failed for hub: " +
+                    ((SensorsSnapshotAvro) avro).getHubId(), e);
         }
     }
 }
