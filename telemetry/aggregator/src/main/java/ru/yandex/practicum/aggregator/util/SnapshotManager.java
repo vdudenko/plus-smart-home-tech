@@ -1,6 +1,5 @@
 package ru.yandex.practicum.aggregator.util;
 
-import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 
@@ -11,43 +10,47 @@ import java.util.Optional;
 @Component
 public class SnapshotManager {
 
-    private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
-
-    @PostConstruct
-    public void init() {
-        clear(); // Очищаем состояние ПРИ КАЖДОМ запуске сервиса
-    }
+    // 🔑 КРИТИЧЕСКИ ВАЖНО: состояние НЕ хранится между событиями!
+    // Каждый снапшот строится "с нуля" на основе текущего события + предыдущего состояния в памяти
+    private final Map<String, Map<String, SensorStateAvro>> hubStates = new HashMap<>();
 
     public Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId();
         String sensorId = event.getId();
+        long eventTimestamp = event.getTimestamp();
 
-        SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(hubId,
-                id -> SensorsSnapshotAvro.newBuilder()
-                        .setHubId(id)
-                        .setTimestamp(event.getTimestamp())
-                        .setSensorsState(new HashMap<>())
-                        .build());
+        // Получаем или создаём состояние хаба
+        Map<String, SensorStateAvro> hubState = hubStates.computeIfAbsent(hubId, k -> new HashMap<>());
 
-        Map<String, SensorStateAvro> sensors = snapshot.getSensorsState();
-        SensorStateAvro oldState = sensors.get(sensorId);
+        // Получаем текущее состояние сенсора
+        SensorStateAvro oldState = hubState.get(sensorId);
 
-        if (oldState != null && event.getTimestamp() < oldState.getTimestamp()) {
+        // Игнорируем события с меньшим таймстампом (защита от дубликатов/задержек)
+        if (oldState != null && eventTimestamp < oldState.getTimestamp()) {
             return Optional.empty();
         }
 
+        // 🔑 ПРАВИЛЬНО: создаём НОВОЕ состояние сенсора на основе события
         SensorStateAvro newState = SensorStateAvro.newBuilder()
-                .setTimestamp(event.getTimestamp())
-                .setData(event.getPayload())
+                .setTimestamp(eventTimestamp)
+                .setData(event.getPayload())  // payload уже правильного типа для union
                 .build();
 
-        sensors.put(sensorId, newState);
-        snapshot.setTimestamp(event.getTimestamp());
+        // Обновляем состояние сенсора в хабе
+        hubState.put(sensorId, newState);
 
-        return Optional.of(SensorsSnapshotAvro.newBuilder(snapshot).build());
+        // 🔑 СОЗДАЁМ НОВЫЙ СНАПШОТ "С НУЛЯ" (без копирования старого объекта!)
+        SensorsSnapshotAvro snapshot = SensorsSnapshotAvro.newBuilder()
+                .setHubId(hubId)
+                .setTimestamp(eventTimestamp)
+                .setSensorsState(new HashMap<>(hubState))  // копия текущего состояния
+                .build();
+
+        return Optional.of(snapshot);
     }
 
+    // 🔑 ОЧИСТКА СОСТОЯНИЯ (вызывается извне при необходимости)
     public void clear() {
-        snapshots.clear();
+        hubStates.clear();
     }
 }

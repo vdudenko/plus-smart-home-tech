@@ -15,7 +15,9 @@ import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
 import java.io.ByteArrayOutputStream;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -25,21 +27,29 @@ public class SensorEventListener {
     private final SnapshotManager snapshotManager;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
-    @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-group-${random.uuid}")
+    // 🔑 УНИКАЛЬНАЯ ГРУППА ДЛЯ КАЖДОГО ЗАПУСКА (гарантирует чтение только новых событий)
+    @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-${random.uuid}")
     public void handleSensorEvent(SensorEventAvro event) {
         try {
             snapshotManager.updateState(event).ifPresent(snapshot -> {
                 byte[] data = serializeAvro(snapshot);
+                try {
+                    kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
+                            .get(1, TimeUnit.SECONDS); // Синхронная отправка
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                } catch (ExecutionException e) {
+                    throw new RuntimeException(e);
+                } catch (TimeoutException e) {
+                    throw new RuntimeException(e);
+                }
 
-                kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
-                        .get(1, TimeUnit.SECONDS);
-
-                log.info("SNAPSHOT_PUBLISHED hub={} devices={}",
+                log.info("PUBLISHED hub={} sensors={}",
                         snapshot.getHubId(), snapshot.getSensorsState().size());
             });
         } catch (Exception e) {
-            log.error("ERROR processing event: hubId={}, deviceId={}",
-                    event.getHubId(), event.getId(), e);
+            log.error("Error processing event hub={} sensor={}: {}",
+                    event.getHubId(), event.getId(), e.getMessage());
         }
     }
 
@@ -51,8 +61,7 @@ public class SensorEventListener {
             encoder.flush();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("Serialization failed for hub: " +
-                    ((SensorsSnapshotAvro) avro).getHubId(), e);
+            throw new RuntimeException("Avro serialization failed", e);
         }
     }
 }
