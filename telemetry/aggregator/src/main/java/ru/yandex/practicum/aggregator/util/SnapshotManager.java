@@ -32,7 +32,7 @@ public class SnapshotManager {
 
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(event.getTimestamp())
-                .setData(event.getPayload())  // payload уже правильного типа
+                .setData(event.getPayload())
                 .build();
 
         sensors.put(sensorId, newState);
