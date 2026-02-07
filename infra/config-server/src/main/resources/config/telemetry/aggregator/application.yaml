@@ -1,15 +1,3 @@
-spring:
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer
-      group-id: aggregator-group-${random.value}
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
 eureka:
   client:
     serviceUrl:
