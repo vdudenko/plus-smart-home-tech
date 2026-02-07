@@ -12,8 +12,10 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
+import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -25,23 +27,27 @@ public class SensorEventListener {
 
     @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-${random.uuid}")
     public void handleSensorEvent(SensorEventAvro event) {
+        log.info("✅ RECEIVED sensor event: hub={}, sensor={}, timestamp={}",
+                event.getHubId(), event.getId(), event.getTimestamp());
+
+        Optional<SensorsSnapshotAvro> snapshotOpt = snapshotManager.updateState(event);
+
+        if (snapshotOpt.isEmpty()) {
+            log.warn("⚠️ SKIPPED event (old timestamp?): hub={}, sensor={}, ts={}",
+                    event.getHubId(), event.getId(), event.getTimestamp());
+            return;
+        }
+
+        SensorsSnapshotAvro snapshot = snapshotOpt.get();
+        byte[] data = serializeAvro(snapshot);
         try {
-            // УДАЛИЛИ ВЕСЬ РЕФЛЕКСИВНЫЙ КОД — ОН НЕ НУЖЕН!
-            snapshotManager.updateState(event).ifPresent(snapshot -> {
-                byte[] data = serializeAvro(snapshot);
-                try {
-                    kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
-                            .get(1, TimeUnit.SECONDS);
-                    log.info("PUBLISHED hub={} sensors={}",
-                            snapshot.getHubId(), snapshot.getSensorsState().size());
-                } catch (Exception e) {
-                    log.error("Publish failed hub={}: {}", snapshot.getHubId(), e.getMessage(), e);
-                }
-            });
+            kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
+                    .get(3, TimeUnit.SECONDS);  // Увеличил таймаут до 3 сек
+            log.info("✅ PUBLISHED snapshot hub={} sensors={}",
+                    snapshot.getHubId(), snapshot.getSensorsState().size());
         } catch (Exception e) {
-            // Добавили глобальный обработчик ошибок для отладки
-            log.error("Failed to process sensor event from hub={}: {}",
-                    event.getHubId(), e.getMessage(), e);
+            log.error("❌ FAILED to publish snapshot for hub={}: {}",
+                    snapshot.getHubId(), e.getMessage(), e);  // ← Третий параметр для стека!
         }
     }
 

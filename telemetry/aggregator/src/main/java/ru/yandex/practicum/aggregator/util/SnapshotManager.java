@@ -19,10 +19,10 @@ public class SnapshotManager {
 
         Map<String, SensorStateAvro> hubState = states.computeIfAbsent(hubId, k -> new HashMap<>());
 
-        SensorStateAvro oldState = hubState.get(sensorId);
-        if (oldState != null && timestamp < oldState.getTimestamp()) {
-            return Optional.empty(); // Игнорируем ТОЛЬКО старые события
-        }
+//        SensorStateAvro oldState = hubState.get(sensorId);
+//        if (oldState != null && timestamp < oldState.getTimestamp()) {
+//            return Optional.empty(); // Игнорируем ТОЛЬКО старые события
+//        }
 
         SensorStateAvro newState = SensorStateAvro.newBuilder()
                 .setTimestamp(timestamp)
