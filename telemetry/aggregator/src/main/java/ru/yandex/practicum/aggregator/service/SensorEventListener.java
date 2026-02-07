@@ -12,44 +12,36 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
 import java.io.ByteArrayOutputStream;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SensorEventListener {
-
     private final SnapshotManager snapshotManager;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
-    // 🔑 УНИКАЛЬНАЯ ГРУППА ДЛЯ КАЖДОГО ЗАПУСКА (гарантирует чтение только новых событий)
     @KafkaListener(topics = "telemetry.sensors.v1", groupId = "aggregator-${random.uuid}")
     public void handleSensorEvent(SensorEventAvro event) {
         try {
+            // УДАЛИЛИ ВЕСЬ РЕФЛЕКСИВНЫЙ КОД — ОН НЕ НУЖЕН!
             snapshotManager.updateState(event).ifPresent(snapshot -> {
                 byte[] data = serializeAvro(snapshot);
                 try {
                     kafkaTemplate.send("telemetry.snapshots.v1", snapshot.getHubId(), data)
-                            .get(1, TimeUnit.SECONDS); // Синхронная отправка
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                } catch (ExecutionException e) {
-                    throw new RuntimeException(e);
-                } catch (TimeoutException e) {
-                    throw new RuntimeException(e);
+                            .get(1, TimeUnit.SECONDS);
+                    log.info("PUBLISHED hub={} sensors={}",
+                            snapshot.getHubId(), snapshot.getSensorsState().size());
+                } catch (Exception e) {
+                    log.error("Publish failed hub={}: {}", snapshot.getHubId(), e.getMessage(), e);
                 }
-
-                log.info("PUBLISHED hub={} sensors={}",
-                        snapshot.getHubId(), snapshot.getSensorsState().size());
             });
         } catch (Exception e) {
-            log.error("Error processing event hub={} sensor={}: {}",
-                    event.getHubId(), event.getId(), e.getMessage());
+            // Добавили глобальный обработчик ошибок для отладки
+            log.error("Failed to process sensor event from hub={}: {}",
+                    event.getHubId(), e.getMessage(), e);
         }
     }
 

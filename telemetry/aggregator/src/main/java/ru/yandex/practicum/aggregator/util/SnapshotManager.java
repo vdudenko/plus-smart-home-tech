@@ -10,47 +10,37 @@ import java.util.Optional;
 @Component
 public class SnapshotManager {
 
-    // 🔑 КРИТИЧЕСКИ ВАЖНО: состояние НЕ хранится между событиями!
-    // Каждый снапшот строится "с нуля" на основе текущего события + предыдущего состояния в памяти
-    private final Map<String, Map<String, SensorStateAvro>> hubStates = new HashMap<>();
+    private final Map<String, Map<String, SensorStateAvro>> states = new HashMap<>();
 
     public Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId();
         String sensorId = event.getId();
-        long eventTimestamp = event.getTimestamp();
+        long timestamp = event.getTimestamp();
 
-        // Получаем или создаём состояние хаба
-        Map<String, SensorStateAvro> hubState = hubStates.computeIfAbsent(hubId, k -> new HashMap<>());
+        Map<String, SensorStateAvro> hubState = states.computeIfAbsent(hubId, k -> new HashMap<>());
 
-        // Получаем текущее состояние сенсора
         SensorStateAvro oldState = hubState.get(sensorId);
-
-        // Игнорируем события с меньшим таймстампом (защита от дубликатов/задержек)
-        if (oldState != null && eventTimestamp < oldState.getTimestamp()) {
-            return Optional.empty();
+        if (oldState != null && timestamp < oldState.getTimestamp()) {
+            return Optional.empty(); // Игнорируем ТОЛЬКО старые события
         }
 
-        // 🔑 ПРАВИЛЬНО: создаём НОВОЕ состояние сенсора на основе события
         SensorStateAvro newState = SensorStateAvro.newBuilder()
-                .setTimestamp(eventTimestamp)
+                .setTimestamp(timestamp)
                 .setData(event.getPayload())  // payload уже правильного типа для union
                 .build();
 
-        // Обновляем состояние сенсора в хабе
         hubState.put(sensorId, newState);
 
-        // 🔑 СОЗДАЁМ НОВЫЙ СНАПШОТ "С НУЛЯ" (без копирования старого объекта!)
         SensorsSnapshotAvro snapshot = SensorsSnapshotAvro.newBuilder()
                 .setHubId(hubId)
-                .setTimestamp(eventTimestamp)
-                .setSensorsState(new HashMap<>(hubState))  // копия текущего состояния
+                .setTimestamp(timestamp)
+                .setSensorsState(new HashMap<>(hubState))  // Глубокая копия
                 .build();
 
         return Optional.of(snapshot);
     }
 
-    // 🔑 ОЧИСТКА СОСТОЯНИЯ (вызывается извне при необходимости)
     public void clear() {
-        hubStates.clear();
+        states.clear();
     }
 }
