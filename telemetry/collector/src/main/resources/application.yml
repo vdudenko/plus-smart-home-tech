@@ -5,7 +5,7 @@ spring:
     import: "configserver:"
   cloud:
     config:
-      fail-fast: false
+      fail-fast: true
       retry:
         useRandomPolicy: true
         max-interval: 6000
