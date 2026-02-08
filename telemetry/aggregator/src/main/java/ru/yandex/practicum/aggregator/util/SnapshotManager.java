@@ -10,37 +10,40 @@ import java.util.Optional;
 @Component
 public class SnapshotManager {
 
-    private final Map<String, Map<String, SensorStateAvro>> states = new HashMap<>();
+    private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
 
     public Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId();
         String sensorId = event.getId();
-        long timestamp = event.getTimestamp();
 
-        Map<String, SensorStateAvro> hubState = states.computeIfAbsent(hubId, k -> new HashMap<>());
+        SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(hubId,
+                id -> SensorsSnapshotAvro.newBuilder()
+                        .setHubId(id)
+                        .setTimestamp(event.getTimestamp())
+                        .setSensorsState(new HashMap<>())
+                        .build());
 
-//        SensorStateAvro oldState = hubState.get(sensorId);
-//        if (oldState != null && timestamp < oldState.getTimestamp()) {
-//            return Optional.empty(); // Игнорируем ТОЛЬКО старые события
-//        }
+        Map<String, SensorStateAvro> sensors = snapshot.getSensorsState();
+        SensorStateAvro oldState = sensors.get(sensorId);
+
+        if (oldState != null) {
+            if (event.getTimestamp() < oldState.getTimestamp()) {
+                return Optional.empty();
+            }
+            if (event.getTimestamp() == oldState.getTimestamp() &&
+                    event.getPayload().equals(oldState.getData())) {
+                return Optional.empty();
+            }
+        }
 
         SensorStateAvro newState = SensorStateAvro.newBuilder()
-                .setTimestamp(timestamp)
-                .setData(event.getPayload())  // payload уже правильного типа для union
+                .setTimestamp(event.getTimestamp())
+                .setData(event.getPayload())
                 .build();
+        sensors.put(sensorId, newState);
 
-        hubState.put(sensorId, newState);
+        snapshot.setTimestamp(event.getTimestamp());
 
-        SensorsSnapshotAvro snapshot = SensorsSnapshotAvro.newBuilder()
-                .setHubId(hubId)
-                .setTimestamp(timestamp)
-                .setSensorsState(new HashMap<>(hubState))  // Глубокая копия
-                .build();
-
-        return Optional.of(snapshot);
-    }
-
-    public void clear() {
-        states.clear();
+        return Optional.of(SensorsSnapshotAvro.newBuilder(snapshot).build());
     }
 }
