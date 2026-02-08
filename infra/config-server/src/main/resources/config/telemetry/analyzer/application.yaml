@@ -22,9 +22,11 @@ spring:
       hibernate:
         format_sql: true
 grpc:
+  server:
+    port: 59092
   client:
     hub-router:
-      address: 'static://localhost:59090'
+      address: 'discovery:///hub-router'
       enable-keep-alive: true
       keep-alive-without-calls: true
       negotiation-type: plaintext
