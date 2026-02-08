@@ -20,14 +20,5 @@ public class AnalyzerApp {
         hubThread.start();
 
         snapshotProcessor.start();
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            hubEventProcessor.shutdown();  // Реализуйте shutdown() метод
-            try {
-                hubThread.join(5000);  // Ждем завершения с таймаутом
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }));
     }
 }
