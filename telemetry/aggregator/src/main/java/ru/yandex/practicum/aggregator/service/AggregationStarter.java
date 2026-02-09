@@ -128,6 +128,7 @@ public class AggregationStarter {
                     org.apache.avro.io.EncoderFactory.get().binaryEncoder(out, null);
             writer.write(avro, encoder);
             encoder.flush();
+
             return out.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize Avro", e);
