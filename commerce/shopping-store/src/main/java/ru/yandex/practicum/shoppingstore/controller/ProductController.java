@@ -7,19 +7,20 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.yandex.practicum.commerce.dto.*;
+import ru.yandex.practicum.shoppingstore.dto.ProductsPageResponse;
 import ru.yandex.practicum.shoppingstore.exception.ProductNotFoundException;
 import ru.yandex.practicum.shoppingstore.service.ProductService;
 
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/shopping-store") // ИЗМЕНЕНО: новый базовый путь
+@RequestMapping("/api/v1/shopping-store")
 @RequiredArgsConstructor
 public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    public ResponseEntity<Page<ProductDto>> getProducts(
+    public ResponseEntity<ProductsPageResponse> getProducts(
             @RequestParam ProductCategory category,
             @PageableDefault(page = 0, size = 20) Pageable pageable) {
         return ResponseEntity.ok(productService.getProductsByCategory(category, pageable));
@@ -40,8 +41,13 @@ public class ProductController {
         return ResponseEntity.ok(productService.removeProductFromStore(productId));
     }
 
-    @PatchMapping("/quantityState")
-    public Boolean setProductQuantityState(@RequestBody SetProductQuantityStateRequest request) {
+    @PostMapping("/quantityState")
+    public Boolean setProductQuantityState(@RequestParam UUID productId,
+                                           @RequestParam String quantityState) {
+        SetProductQuantityStateRequest request = new SetProductQuantityStateRequest();
+        request.setProductId(productId);
+        request.setQuantityState(QuantityState.valueOf(quantityState));
+
         return productService.setProductQuantityState(request);
     }
 

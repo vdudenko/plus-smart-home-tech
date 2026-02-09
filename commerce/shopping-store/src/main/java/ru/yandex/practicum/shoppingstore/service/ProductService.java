@@ -10,8 +10,11 @@ import ru.yandex.practicum.shoppingstore.exception.ProductNotFoundException;
 import ru.yandex.practicum.shoppingstore.mapper.ProductMapper;
 import ru.yandex.practicum.shoppingstore.model.Product;
 import ru.yandex.practicum.shoppingstore.repository.ProductRepository;
-
+import ru.yandex.practicum.shoppingstore.dto.ProductsPageResponse.SortInfo;
+import ru.yandex.practicum.shoppingstore.dto.ProductsPageResponse;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -20,13 +23,33 @@ public class ProductService {
     private final ProductMapper productMapper;
 
     @Transactional(readOnly = true)
-    public Page<ProductDto> getProductsByCategory(ProductCategory category, Pageable pageable) {
-        Page<Product> products = productRepository.findByProductCategoryAndProductState(
+    public ProductsPageResponse getProductsByCategory(ProductCategory category, Pageable pageable) {
+        Page<Product> page = productRepository.findByProductCategoryAndProductState(
                 category,
                 ProductState.ACTIVE,
                 pageable
         );
-        return products.map(productMapper::toDto);
+        List<SortInfo> sortInfo = page.getSort().stream()
+                .map(order -> SortInfo.builder()
+                        .direction(order.getDirection().name())
+                        .property(order.getProperty())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ProductsPageResponse.builder()
+                .content(page.getContent().stream()
+                        .map(productMapper::toDto)
+                        .collect(Collectors.toList()))
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .number(page.getNumber())
+                .numberOfElements(page.getNumberOfElements())
+                .first(page.isFirst())
+                .last(page.isLast())
+                .empty(page.isEmpty())
+                .sort(sortInfo)
+                .build();
     }
 
     @Transactional(readOnly = true)
