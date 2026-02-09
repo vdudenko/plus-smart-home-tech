@@ -24,9 +24,8 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductsPageResponse getProductsByCategory(ProductCategory category, Pageable pageable) {
-        Page<Product> page = productRepository.findByProductCategoryAndProductState(
+        Page<Product> page = productRepository.findByProductCategory(
                 category,
-                ProductState.ACTIVE,
                 pageable
         );
         List<SortInfo> sortInfo = page.getSort().stream()
