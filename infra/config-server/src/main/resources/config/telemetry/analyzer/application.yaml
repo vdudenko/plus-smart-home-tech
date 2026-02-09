@@ -26,7 +26,7 @@ grpc:
     port: 59092
   client:
     hub-router:
-      address: 'discovery:///hub-router'
+      address: discovery:///hub-router
       enable-keep-alive: true
       keep-alive-without-calls: true
       negotiation-type: plaintext
