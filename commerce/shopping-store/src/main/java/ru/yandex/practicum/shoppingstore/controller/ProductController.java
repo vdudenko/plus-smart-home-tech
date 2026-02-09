@@ -40,7 +40,7 @@ public class ProductController {
         return ResponseEntity.ok(productService.removeProductFromStore(productId));
     }
 
-    @PostMapping("/quantityState")
+    @PatchMapping("/quantityState")
     public Boolean setProductQuantityState(@RequestBody SetProductQuantityStateRequest request) {
         return productService.setProductQuantityState(request);
     }

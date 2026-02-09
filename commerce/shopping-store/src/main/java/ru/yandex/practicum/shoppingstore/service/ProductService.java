@@ -39,7 +39,6 @@ public class ProductService {
     @Transactional
     public ProductDto createProduct(ProductDto productDto) {
         Product product = productMapper.toEntity(productDto);
-        product.setProductState(ProductState.ACTIVE);
         Product saved = productRepository.save(product);
         return productMapper.toDto(saved);
     }
