@@ -44,6 +44,8 @@ public class CartService {
         Map<UUID, CartItem> existingMap = existingItems.stream()
                 .collect(Collectors.toMap(CartItem::getProductId, item -> item));
 
+        List<CartItem> itemsToSave = new ArrayList<>();
+
         for (Map.Entry<UUID, Long> entry : products.entrySet()) {
             UUID productId = entry.getKey();
             Long quantity = entry.getValue();
@@ -51,17 +53,18 @@ public class CartService {
             CartItem item = existingMap.get(productId);
             if (item != null) {
                 item.setQuantity(item.getQuantity() + quantity);
-                cartItemRepository.save(item);
+                itemsToSave.add(item);
             } else {
                 CartItem newItem = CartItem.builder()
                         .cart(cart)
                         .productId(productId)
                         .quantity(quantity)
                         .build();
-                cartItemRepository.save(newItem);
+                itemsToSave.add(newItem);
             }
         }
 
+        cartItemRepository.saveAll(itemsToSave);
         log.info("Added products to cart for user {}", username);
         return getShoppingCart(username);
     }
@@ -92,10 +95,7 @@ public class CartService {
                     "Нет искомых товаров в корзине: " + missingProducts);
         }
 
-        for (UUID productId : productIds) {
-            cartItemRepository.deleteByCartIdAndProductId(cart.getId(), productId);
-        }
-
+        cartItemRepository.deleteByCartIdAndProductIdIn(cart.getId(), productIds);
         log.info("Removed {} products from cart for user {}", productIds.size(), username);
         return getShoppingCart(username);
     }
