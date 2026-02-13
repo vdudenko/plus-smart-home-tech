@@ -42,7 +42,7 @@ public class SnapshotProcessor {
         // Инициализация потребителя для событий хаба
         Properties hubProps = new Properties();
         hubProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        hubProps.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-single-group");
+        hubProps.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-hub-group");
         hubProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         hubProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, HubEventAvroDeserializer.class);
         hubProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
@@ -53,7 +53,7 @@ public class SnapshotProcessor {
         // Инициализация потребителя для снапшотов
         Properties snapshotProps = new Properties();
         snapshotProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        snapshotProps.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-single-group");
+        snapshotProps.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-snapshot-group");
         snapshotProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         snapshotProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorsSnapshotAvroDeserializer.class);
         snapshotProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");

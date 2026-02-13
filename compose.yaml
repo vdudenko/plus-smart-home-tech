@@ -33,3 +33,17 @@ services:
                              --partitions 1 --replication-factor 1 --if-not-exists \
                              --bootstrap-server kafka:29092'"
     init: true
+
+  config-server:
+    build: infra/config-server
+    image: config-server
+    container_name: config-server
+    ports:
+      - "8888:8888"
+
+  discovery-server:
+    build: infra/discovery-server
+    image: discovery-server
+    container_name: discovery-server
+    ports:
+      - "8761:8761"

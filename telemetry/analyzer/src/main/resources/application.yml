@@ -1,33 +1,20 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/ewm-stats
-    username: dbuser
-    password: 12345
-    driver-class-name: org.postgresql.Driver
-  sql:
-    init:
-      mode: always
-  jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect  # ← ЭТО ОБЯЗАТЕЛЬНО
-    hibernate:
-      ddl-auto: update
-      dialect: org.hibernate.dialect.PostgreSQLDialect
-      show_sql: true
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: analyzer-snapshots
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-
-grpc:
+  application:
+    name: analyzer
+  config:
+    import: "configserver:"
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        useRandomPolicy: true
+        max-interval: 6000
+      discovery:
+        enabled: true
+        serviceId: config-server
+eureka:
   client:
-    hub-router:
-      address: 'static://localhost:59090'
-      enable-keep-alive: true
-      keep-alive-without-calls: true
-      negotiation-type: plaintext
+    register-with-eureka: true
+    fetch-registry: true
+    serviceUrl:
+      defaultZone: http://${eureka.instance.hostname:localhost}:${eureka.instance.port:8761}/eureka/

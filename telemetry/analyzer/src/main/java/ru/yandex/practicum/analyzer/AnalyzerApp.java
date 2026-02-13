@@ -16,6 +16,7 @@ public class AnalyzerApp {
         SnapshotProcessor snapshotProcessor = context.getBean(SnapshotProcessor.class);
 
         Thread hubThread = new Thread(hubEventProcessor, "HubEventProcessor");
+        hubThread.setDaemon(false);
         hubThread.start();
 
         snapshotProcessor.start();

@@ -57,4 +57,11 @@ public class HubEventProcessor implements Runnable {
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         consumer = new KafkaConsumer<>(props);
     }
+
+    public void shutdown() {
+        if (consumer != null) {
+            log.info("Shutting down HubEventProcessor...");
+            consumer.wakeup(); // Вызывает WakeupException в poll()
+        }
+    }
 }

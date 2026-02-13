@@ -18,7 +18,6 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.aggregator.deserializer.SensorEventAvroDeserializer;
 import ru.yandex.practicum.aggregator.util.SnapshotManager;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -129,6 +128,7 @@ public class AggregationStarter {
                     org.apache.avro.io.EncoderFactory.get().binaryEncoder(out, null);
             writer.write(avro, encoder);
             encoder.flush();
+
             return out.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize Avro", e);

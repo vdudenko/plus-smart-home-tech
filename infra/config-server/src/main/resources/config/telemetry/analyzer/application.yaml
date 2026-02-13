@@ -1,0 +1,32 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: analyzer-snapshots
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ewm-stats
+    username: dbuser
+    password: 12345
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always
+  jpa:
+    hibernate:
+      ddl-auto: update
+      dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+grpc:
+  server:
+    port: 59092
+  client:
+    hub-router:
+      address: discovery:///hub-router
+      enable-keep-alive: true
+      keep-alive-without-calls: true
+      negotiation-type: plaintext
