@@ -1,36 +1,38 @@
 package ru.yandex.practicum.warehouse.mapper;
 
-import org.springframework.stereotype.Component;
-import ru.yandex.practicum.commerce.dto.WarehouseAddress;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.factory.Mappers;
+import ru.yandex.practicum.commerce.dto.DimensionDto;
+import ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest;
 import ru.yandex.practicum.warehouse.model.WarehouseProduct;
 
-import java.security.SecureRandom;
-import java.util.Random;
+@Mapper(componentModel = "spring")
+public interface WarehouseProductMapper {
 
-@Component
-public class WarehouseProductMapper {
-    private static final String[] ADDRESSES = new String[] {"ADDRESS_1", "ADDRESS_2"};
-    private static final String CURRENT_ADDRESS = ADDRESSES[Random.from(new SecureRandom()).nextInt(0, ADDRESSES.length)];
+    WarehouseProductMapper INSTANCE = Mappers.getMapper(WarehouseProductMapper.class);
 
-    public WarehouseProduct toEntity(ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest request) {
-        return WarehouseProduct.builder()
-                .productId(request.getProductId())
-                .quantity(0L) // Начальное количество = 0
-                .width(request.getDimension().getWidth())
-                .height(request.getDimension().getHeight())
-                .depth(request.getDimension().getDepth())
-                .weight(request.getWeight())
-                .fragile(request.getFragile())
-                .build();
-    }
+    @Mapping(source = "productId", target = "productId")
+    @Mapping(source = "dimension.width", target = "width")   // width из вложенного объекта
+    @Mapping(source = "dimension.height", target = "height") // height из вложенного объекта
+    @Mapping(source = "dimension.depth", target = "depth")   // depth из вложенного объекта
+    @Mapping(source = "weight", target = "weight")
+    @Mapping(source = "fragile", target = "fragile")
+    WarehouseProduct toEntity(NewProductInWarehouseRequest request);
 
-    public WarehouseAddress getCurrentWarehouseAddress() {
-        return WarehouseAddress.builder()
-                .country(CURRENT_ADDRESS)
-                .city(CURRENT_ADDRESS)
-                .street(CURRENT_ADDRESS)
-                .house(CURRENT_ADDRESS)
-                .flat(CURRENT_ADDRESS) // ИСПРАВЛЕНО: было apartment
+    @Mapping(source = "productId", target = "productId")
+    @Mapping(source = "width", target = "dimension.width")
+    @Mapping(source = "height", target = "dimension.height")
+    @Mapping(source = "depth", target = "dimension.depth")
+    @Mapping(source = "weight", target = "weight")
+    @Mapping(source = "fragile", target = "fragile")
+    NewProductInWarehouseRequest toDto(WarehouseProduct warehouseProduct);
+
+    default DimensionDto mapDimension(Double width, Double height, Double depth) {
+        return DimensionDto.builder()
+                .width(width)
+                .height(height)
+                .depth(depth)
                 .build();
     }
 }

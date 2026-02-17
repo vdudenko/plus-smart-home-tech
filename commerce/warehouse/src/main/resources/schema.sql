@@ -11,7 +11,25 @@ CREATE TABLE IF NOT EXISTS warehouse_products (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS order_booking (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id UUID NOT NULL UNIQUE,
+    delivery_id UUID,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS order_booking_products (
+    booking_id BIGINT NOT NULL REFERENCES order_booking(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL,
+    quantity BIGINT NOT NULL CHECK (quantity > 0),
+    PRIMARY KEY (booking_id, product_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_warehouse_products_product_id
     ON warehouse_products(product_id);
 CREATE INDEX IF NOT EXISTS idx_warehouse_products_quantity
     ON warehouse_products(quantity);
+CREATE INDEX IF NOT EXISTS idx_order_booking_order_id
+    ON order_booking(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_booking_delivery_id
+    ON order_booking(delivery_id);

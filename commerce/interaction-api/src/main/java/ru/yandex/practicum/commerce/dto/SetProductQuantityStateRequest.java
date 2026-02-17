@@ -13,9 +13,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SetProductQuantityStateRequest {
-    @JsonProperty("productId")
     private UUID productId;
-
-    @JsonProperty("quantityState")
     private QuantityState quantityState;
 }
