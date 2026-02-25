@@ -1,30 +1,35 @@
 package ru.yandex.practicum.shoppingcart.mapper;
 
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.Named;
 import ru.yandex.practicum.shoppingcart.dto.ShoppingCartDto;
 import ru.yandex.practicum.shoppingcart.model.Cart;
 import ru.yandex.practicum.shoppingcart.model.CartItem;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
-@Component
-public class CartMapper {
-    public ShoppingCartDto toDto(Cart cart, List<CartItem> items) {
-        if (cart == null) {
-            return null;
+@Mapper(componentModel = "spring")
+public interface CartMapper {
+    @Mapping(source = "items", target = "products", qualifiedByName = "cartItemsToProductMap")
+    ShoppingCartDto toDto(Cart cart, List<CartItem> items);
+
+    @Named("cartItemsToProductMap")
+    default Map<UUID, Long> mapCartItemsToProductMap(List<CartItem> items) {
+        if (items == null || items.isEmpty()) {
+            return Collections.emptyMap();
         }
 
-        Map<java.util.UUID, Long> products = items.stream()
+        return items.stream()
+                .filter(item -> item.getProductId() != null)
                 .collect(Collectors.toMap(
                         CartItem::getProductId,
-                        CartItem::getQuantity
+                        CartItem::getQuantity,
+                        (existing, replacement) -> existing
                 ));
-
-        return ShoppingCartDto.builder()
-                .shoppingCartId(cart.getId())
-                .products(products)
-                .build();
     }
 }

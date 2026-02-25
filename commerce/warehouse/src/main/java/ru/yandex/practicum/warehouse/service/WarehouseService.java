@@ -8,10 +8,10 @@ import ru.yandex.practicum.commerce.dto.*;
 import ru.yandex.practicum.warehouse.feign.ShoppingStoreClient;
 import ru.yandex.practicum.warehouse.mapper.WarehouseProductMapper;
 import ru.yandex.practicum.warehouse.model.WarehouseProduct;
+import ru.yandex.practicum.warehouse.provider.WarehouseAddressProvider;
 import ru.yandex.practicum.warehouse.repository.WarehouseProductRepository;
 import ru.yandex.practicum.warehouse.util.QuantityStateCalculator;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -22,11 +22,12 @@ import java.util.UUID;
 public class WarehouseService {
     private final WarehouseProductRepository warehouseProductRepository;
     private final WarehouseProductMapper warehouseProductMapper;
-    private final ShoppingStoreClient shoppingStoreClient; // ← Клиент для вызова витрины
+    private final ShoppingStoreClient shoppingStoreClient;
+    private final WarehouseAddressProvider warehouseAddressProvider;
 
     @Transactional(readOnly = true)
     public WarehouseAddress getWarehouseAddress() {
-        return warehouseProductMapper.getCurrentWarehouseAddress();
+        return warehouseAddressProvider.getCurrentWarehouseAddress();
     }
 
     @Transactional
@@ -52,7 +53,6 @@ public class WarehouseService {
         log.info("Increased quantity for product {} from {} to {}",
                 request.getProductId(), oldQuantity, product.getQuantity());
 
-        // Автоматически обновляем статус остатка на витрине
         updateQuantityStateOnShoppingStore(request.getProductId(), product.getQuantity());
     }
 
@@ -61,7 +61,6 @@ public class WarehouseService {
         Map<UUID, Long> products = shoppingCartDto.getProducts();
         List<WarehouseProduct> warehouseProducts = warehouseProductRepository.findByProductIdIn(List.copyOf(products.keySet()));
 
-        // Проверяем достаточность количества
         for (WarehouseProduct wp : warehouseProducts) {
             Long requestedQuantity = products.get(wp.getProductId());
             if (wp.getQuantity() < requestedQuantity) {
@@ -71,7 +70,6 @@ public class WarehouseService {
             }
         }
 
-        // Рассчитываем общие параметры доставки
         double totalWeight = 0.0;
         double totalVolume = 0.0;
         boolean hasFragile = false;
@@ -92,10 +90,6 @@ public class WarehouseService {
                 .build();
     }
 
-    /**
-     * Обновляет статус остатка товара на витрине товаров.
-     * Вызывается автоматически при изменении количества на складе.
-     */
     private void updateQuantityStateOnShoppingStore(UUID productId, Long quantity) {
         try {
             QuantityState newState = QuantityStateCalculator.calculate(quantity);
@@ -105,7 +99,6 @@ public class WarehouseService {
                     .quantityState(newState)
                     .build();
 
-            // Вызов витрины через Feign-клиент (контракт ShoppingStoreApi)
             Boolean success = shoppingStoreClient.setProductQuantityState(request);
 
             if (Boolean.TRUE.equals(success)) {
@@ -114,7 +107,6 @@ public class WarehouseService {
                 log.warn("Failed to update quantity state for product {} to {}", productId, newState);
             }
         } catch (Exception e) {
-            // Не падаем при ошибке обновления витрины — это второстепенная операция
             log.error("Error updating quantity state for product {} on shopping-store: {}", productId, e.getMessage());
         }
     }
